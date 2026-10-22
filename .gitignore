@@ -75,6 +75,7 @@ frontend/.env
 backend/.env
 
 # Temporary scan artifacts (for future phases)
+backend/data/workspaces/
 temp/
 tmp/
 uploads/

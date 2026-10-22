@@ -7,6 +7,8 @@ export type SourceType = 'github' | 'zip';
 
 export type ScanStatus = 'created' | 'queued' | 'running' | 'completed' | 'failed';
 
+export type IntakeStatus = 'created' | 'ingesting' | 'ready' | 'failed';
+
 export interface HealthResponse {
   status: string;
   service: string;
@@ -39,6 +41,8 @@ export interface Scan {
   source_type: SourceType;
   source_reference?: string | null;
   status: ScanStatus | string;
+  intake_status?: IntakeStatus | string | null;
+  workspace_id?: string | null;
   created_at: string;
   started_at?: string | null;
   completed_at?: string | null;
@@ -54,6 +58,12 @@ export interface CreateScanPayload {
   project_name: string;
   source_type: SourceType;
   source_reference?: string;
+}
+
+export interface GithubIntakePayload {
+  repo_url: string;
+  project_name?: string;
+  ref?: string;
 }
 
 export interface ApiValidationError {

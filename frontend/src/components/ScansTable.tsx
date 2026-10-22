@@ -10,7 +10,7 @@ import {
   FolderGit2,
 } from 'lucide-react';
 import { Scan } from '../types';
-import { StatusBadge } from './StatusBadge';
+import { StatusBadge, IntakeStatusBadge } from './StatusBadge';
 
 interface ScansTableProps {
   scans: Scan[];
@@ -52,7 +52,7 @@ export const ScansTable: React.FC<ScansTableProps> = ({
             <span>Recent Scans</span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Audit history of registered security scans.
+            Audit history of registered security scans and intake lifecycle.
           </p>
         </div>
         <span className="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700">
@@ -93,7 +93,7 @@ export const ScansTable: React.FC<ScansTableProps> = ({
           </div>
           <h3 className="text-sm font-semibold text-slate-200">No scan records recorded yet</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1 leading-relaxed">
-            Register your first repository or ZIP archive using the form above. A database record will be initialized with status <span className="text-cyan-400 font-mono">created</span>.
+            Acquire a GitHub repository or upload a ZIP archive using the intake form. Source code will be validated and staged with status <span className="text-emerald-400 font-mono">source ready</span>.
           </p>
         </div>
       )}
@@ -106,8 +106,8 @@ export const ScansTable: React.FC<ScansTableProps> = ({
               <tr>
                 <th className="py-3 px-6">Project Name</th>
                 <th className="py-3 px-6">Source Type</th>
-                <th className="py-3 px-6">Scan ID</th>
-                <th className="py-3 px-6">Status</th>
+                <th className="py-3 px-6">Source Intake</th>
+                <th className="py-3 px-6">Security Scan</th>
                 <th className="py-3 px-6">Created At (UTC)</th>
                 <th className="py-3 px-6 text-right">Actions</th>
               </tr>
@@ -122,7 +122,10 @@ export const ScansTable: React.FC<ScansTableProps> = ({
                   <td className="py-3.5 px-6 font-medium text-slate-200">
                     <div className="flex items-center gap-2.5">
                       <FolderGit2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span className="font-semibold">{scan.project_name}</span>
+                      <div>
+                        <span className="font-semibold block">{scan.project_name}</span>
+                        <span className="text-[10px] font-mono text-slate-500">{scan.id.slice(0, 8)}...</span>
+                      </div>
                     </div>
                   </td>
 
@@ -143,18 +146,12 @@ export const ScansTable: React.FC<ScansTableProps> = ({
                     </span>
                   </td>
 
-                  {/* Scan ID (truncated with copy hover) */}
-                  <td className="py-3.5 px-6 font-mono text-slate-400">
-                    <span
-                      title={scan.id}
-                      className="cursor-pointer hover:text-emerald-400 transition-colors"
-                      onClick={() => onSelectScan(scan.id)}
-                    >
-                      {scan.id.slice(0, 8)}...
-                    </span>
+                  {/* Intake Status Badge */}
+                  <td className="py-3.5 px-6">
+                    <IntakeStatusBadge status={scan.intake_status || 'created'} />
                   </td>
 
-                  {/* Status Badge */}
+                  {/* Scan Status Badge */}
                   <td className="py-3.5 px-6">
                     <StatusBadge status={scan.status} />
                   </td>
