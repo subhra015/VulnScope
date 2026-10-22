@@ -57,20 +57,28 @@ class ScanResponse(BaseModel):
     project_name: str = Field(..., description="Project name")
     source_type: str = Field(..., description="Source type (github or zip)")
     source_reference: Optional[str] = Field(default=None, description="Source reference")
-    status: str = Field(..., description="Current status of the scan (e.g. 'created')")
+    status: str = Field(..., description="Current status of the security scan (e.g. 'created')")
+    intake_status: Optional[str] = Field(
+        default="created",
+        description="Current status of source intake ('created', 'ingesting', 'ready', 'failed')",
+    )
     created_at: datetime = Field(..., description="UTC creation timestamp")
     started_at: Optional[datetime] = Field(default=None, description="UTC start timestamp")
     completed_at: Optional[datetime] = Field(default=None, description="UTC completion timestamp")
-    error_summary: Optional[str] = Field(default=None, description="Error summary if scan failed")
+    error_summary: Optional[str] = Field(default=None, description="Error summary if scan or intake failed")
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class ScanDetailResponse(ScanResponse):
     repository_id: Optional[str] = Field(default=None, description="Associated repository ID")
+    workspace_id: Optional[str] = Field(
+        default=None,
+        description="Isolated workspace identifier (UUID only, internal filesystem paths are omitted)",
+    )
     findings: List[FindingResponse] = Field(
         default_factory=list,
-        description="Security findings for this scan (empty in Phase 1)",
+        description="Security findings for this scan (empty in Phase 1 and Phase 2)",
     )
 
     model_config = ConfigDict(from_attributes=True)

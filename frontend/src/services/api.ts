@@ -8,6 +8,7 @@ import {
   Scan,
   ScanDetail,
   CreateScanPayload,
+  GithubIntakePayload,
   ApiValidationError,
 } from '../types';
 
@@ -27,10 +28,12 @@ class ApiError extends Error {
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  const headers = {
-    'Content-Type': 'application/json',
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+
+  const headers: Record<string, string> = {
     Accept: 'application/json',
-    ...(options.headers || {}),
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...((options.headers as Record<string, string>) || {}),
   };
 
   let response: Response;
@@ -82,10 +85,36 @@ export const api = {
   },
 
   /**
-   * Create a new scan record (status 'created').
+   * Create a new scan record without source files (Phase 1 legacy compatibility).
    */
   async createScan(payload: CreateScanPayload): Promise<Scan> {
     return request<Scan>('/api/scans', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  /**
+   * Phase 2: Upload and validate a ZIP archive.
+   */
+  async intakeZip(file: File, projectName?: string): Promise<Scan> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (projectName && projectName.trim()) {
+      formData.append('project_name', projectName.trim());
+    }
+
+    return request<Scan>('/api/intake/zip', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  /**
+   * Phase 2: Acquire and validate a public GitHub repository snapshot.
+   */
+  async intakeGithub(payload: GithubIntakePayload): Promise<Scan> {
+    return request<Scan>('/api/intake/github', {
       method: 'POST',
       body: JSON.stringify(payload),
     });

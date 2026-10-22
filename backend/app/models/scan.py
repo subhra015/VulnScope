@@ -53,7 +53,18 @@ class Scan(Base):
         default="created",
         nullable=False,
         index=True,
-    )  # In Phase 1, stays "created"
+    )  # Security scan status: 'created', 'queued', 'running', 'completed', 'failed'
+    intake_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        default="created",
+        nullable=True,
+        index=True,
+    )  # Source intake status: 'created', 'ingesting', 'ready', 'failed'
+    workspace_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime,
         default=utc_now,
