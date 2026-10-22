@@ -4,7 +4,7 @@ import {
   Layers,
   Calendar,
   Clock,
-  Github,
+  GitBranch,
   Archive,
   ShieldAlert,
   Code,
@@ -170,7 +170,7 @@ export const ScanDetailsModal: React.FC<ScanDetailsModalProps> = ({ scanId, onCl
                     <div className="flex items-center gap-1.5 mt-0.5 text-slate-300 font-medium">
                       {scan.source_type === 'github' ? (
                         <>
-                          <Github className="w-3.5 h-3.5 text-purple-400" />
+                          <GitBranch className="w-3.5 h-3.5 text-purple-400" />
                           <span>GitHub Repository</span>
                         </>
                       ) : (
