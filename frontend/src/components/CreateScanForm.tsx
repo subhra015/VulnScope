@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlusCircle, Github, Archive, Info, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { PlusCircle, GitBranch, Archive, Info, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { api, ApiError } from '../services/api';
 import { CreateScanPayload, SourceType } from '../types';
 
@@ -132,7 +132,7 @@ export const CreateScanForm: React.FC<CreateScanFormProps> = ({ onScanCreated })
                     : 'bg-slate-950/50 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
                 } disabled:opacity-50`}
               >
-                <Github className="w-3.5 h-3.5" />
+                <GitBranch className="w-3.5 h-3.5" />
                 <span>GitHub</span>
               </button>
               <button

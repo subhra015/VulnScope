@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Github,
+  GitBranch,
   Archive,
   ExternalLink,
   Shield,
@@ -131,7 +131,7 @@ export const ScansTable: React.FC<ScansTableProps> = ({
                     <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
                       {scan.source_type === 'github' ? (
                         <>
-                          <Github className="w-3 h-3 text-purple-400" />
+                          <GitBranch className="w-3 h-3 text-purple-400" />
                           <span>GitHub</span>
                         </>
                       ) : (
