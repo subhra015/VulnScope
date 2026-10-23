@@ -9,8 +9,10 @@ from app.schemas.scan import (
     ScanCreateRequest,
     ScanResponse,
     ScanDetailResponse,
+    ScanRunResponse,
 )
-from app.schemas.finding import FindingResponse
+from app.schemas.finding import FindingResponse, FindingsListResponse
+from app.schemas.scanner_run import ScannerRunResponse
 
 __all__ = [
     "HealthResponse",
@@ -18,5 +20,8 @@ __all__ = [
     "ScanCreateRequest",
     "ScanResponse",
     "ScanDetailResponse",
+    "ScanRunResponse",
     "FindingResponse",
+    "FindingsListResponse",
+    "ScannerRunResponse",
 ]

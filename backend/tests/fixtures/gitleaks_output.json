@@ -1,0 +1,37 @@
+[
+  {
+    "Description": "GitHub Personal Access Token",
+    "StartLine": 12,
+    "EndLine": 12,
+    "StartColumn": 15,
+    "EndColumn": 55,
+    "Match": "ghp_FAKEEXAMPLETOKENFORTESTINGONLY012345",
+    "Secret": "ghp_FAKEEXAMPLETOKENFORTESTINGONLY012345",
+    "File": "config/secrets.py",
+    "SymlinkFile": "",
+    "Commit": "",
+    "Entropy": 3.75,
+    "Author": "",
+    "Email": "",
+    "Date": "",
+    "Message": "",
+    "Tags": [],
+    "RuleID": "github-pat",
+    "Fingerprint": "config/secrets.py:github-pat:12"
+  },
+  {
+    "Description": "Generic API Key",
+    "StartLine": 88,
+    "EndLine": 88,
+    "StartColumn": 10,
+    "EndColumn": 42,
+    "Match": "api_key=synthetic_fake_key_1234567890123",
+    "Secret": "synthetic_fake_key_1234567890123",
+    "File": ".env.local",
+    "SymlinkFile": "",
+    "Commit": "",
+    "Entropy": 4.1,
+    "RuleID": "generic-api-key",
+    "Fingerprint": ".env.local:generic-api-key:88"
+  }
+]

@@ -1,0 +1,44 @@
+{
+  "version": "1.182.1",
+  "results": [
+    {
+      "check_id": "python.lang.security.audit.eval-detected.eval-detected",
+      "path": "app/calculator.py",
+      "start": { "line": 42, "col": 5, "offset": 1200 },
+      "end": { "line": 42, "col": 20, "offset": 1215 },
+      "extra": {
+        "message": "Detected dynamic code execution via eval(). This allows remote code execution if input is user-controlled.",
+        "metadata": {
+          "cwe": ["CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"],
+          "owasp": ["A03:2021 - Injection"],
+          "confidence": "HIGH",
+          "category": "security",
+          "references": ["https://owasp.org/Top10/A03_2021-Injection"]
+        },
+        "severity": "ERROR",
+        "fingerprint": "requires login",
+        "lines": "eval(user_expr)"
+      }
+    },
+    {
+      "check_id": "python.lang.security.insecure-hash-md5.insecure-hash-md5",
+      "path": "app/auth.py",
+      "start": { "line": 15, "col": 10, "offset": 350 },
+      "end": { "line": 15, "col": 25, "offset": 365 },
+      "extra": {
+        "message": "Insecure hashing algorithm MD5 detected. Use SHA256 or bcrypt instead.",
+        "metadata": {
+          "cwe": ["CWE-327: Use of a Broken or Risky Cryptographic Algorithm"],
+          "confidence": "MEDIUM",
+          "category": "security"
+        },
+        "severity": "WARNING",
+        "fingerprint": "requires login"
+      }
+    }
+  ],
+  "errors": [],
+  "paths": {
+    "scanned": ["app/calculator.py", "app/auth.py"]
+  }
+}

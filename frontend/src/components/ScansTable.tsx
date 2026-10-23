@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   GitBranch,
   Archive,
@@ -8,6 +8,8 @@ import {
   Layers,
   AlertTriangle,
   FolderGit2,
+  Play,
+  Loader2,
 } from 'lucide-react';
 import { Scan } from '../types';
 import { StatusBadge, IntakeStatusBadge } from './StatusBadge';
@@ -17,6 +19,7 @@ interface ScansTableProps {
   isLoading: boolean;
   error: string | null;
   onSelectScan: (scanId: string) => void;
+  onRunScan?: (scanId: string) => Promise<void> | void;
   onRetry: () => void;
 }
 
@@ -25,8 +28,11 @@ export const ScansTable: React.FC<ScansTableProps> = ({
   isLoading,
   error,
   onSelectScan,
+  onRunScan,
   onRetry,
 }) => {
+  const [triggeringScanId, setTriggeringScanId] = useState<string | null>(null);
+
   const formatDate = (isoString: string) => {
     try {
       const d = new Date(isoString);
@@ -43,6 +49,17 @@ export const ScansTable: React.FC<ScansTableProps> = ({
     }
   };
 
+  const handleRunClick = async (e: React.MouseEvent, scanId: string) => {
+    e.stopPropagation();
+    if (!onRunScan || triggeringScanId) return;
+    try {
+      setTriggeringScanId(scanId);
+      await onRunScan(scanId);
+    } finally {
+      setTriggeringScanId(null);
+    }
+  };
+
   return (
     <div className="bg-slate-900/90 rounded-xl border border-slate-800 shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between">
@@ -52,7 +69,7 @@ export const ScansTable: React.FC<ScansTableProps> = ({
             <span>Recent Scans</span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Audit history of registered security scans and intake lifecycle.
+            Audit history of registered security scans, intake lifecycle, and scanning actions.
           </p>
         </div>
         <span className="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700">
@@ -93,7 +110,7 @@ export const ScansTable: React.FC<ScansTableProps> = ({
           </div>
           <h3 className="text-sm font-semibold text-slate-200">No scan records recorded yet</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1 leading-relaxed">
-            Acquire a GitHub repository or upload a ZIP archive using the intake form. Source code will be validated and staged with status <span className="text-emerald-400 font-mono">source ready</span>.
+            Acquire a GitHub repository or upload a ZIP archive using the intake form. Once source is ready, run Semgrep, Gitleaks, and OSV-Scanner analysis.
           </p>
         </div>
       )}
@@ -113,66 +130,96 @@ export const ScansTable: React.FC<ScansTableProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {scans.map((scan) => (
-                <tr
-                  key={scan.id}
-                  className="hover:bg-slate-800/40 transition-colors group"
-                >
-                  {/* Project Name */}
-                  <td className="py-3.5 px-6 font-medium text-slate-200">
-                    <div className="flex items-center gap-2.5">
-                      <FolderGit2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <div>
-                        <span className="font-semibold block">{scan.project_name}</span>
-                        <span className="text-[10px] font-mono text-slate-500">{scan.id.slice(0, 8)}...</span>
+              {scans.map((scan) => {
+                const canRun = scan.intake_status === 'ready' && scan.status !== 'running';
+                const isRunning = scan.status === 'running' || triggeringScanId === scan.id;
+
+                return (
+                  <tr
+                    key={scan.id}
+                    className="hover:bg-slate-800/40 transition-colors group cursor-pointer"
+                    onClick={() => onSelectScan(scan.id)}
+                  >
+                    {/* Project Name */}
+                    <td className="py-3.5 px-6 font-medium text-slate-200">
+                      <div className="flex items-center gap-2.5">
+                        <FolderGit2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <div>
+                          <span className="font-semibold block">{scan.project_name}</span>
+                          <span className="text-[10px] font-mono text-slate-500">{scan.id.slice(0, 8)}...</span>
+                        </div>
                       </div>
-                    </div>
-                  </td>
+                    </td>
 
-                  {/* Source Type Badge */}
-                  <td className="py-3.5 px-6">
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
-                      {scan.source_type === 'github' ? (
-                        <>
-                          <GitBranch className="w-3 h-3 text-purple-400" />
-                          <span>GitHub</span>
-                        </>
-                      ) : (
-                        <>
-                          <Archive className="w-3 h-3 text-amber-400" />
-                          <span>ZIP</span>
-                        </>
+                    {/* Source Type Badge */}
+                    <td className="py-3.5 px-6">
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                        {scan.source_type === 'github' ? (
+                          <>
+                            <GitBranch className="w-3 h-3 text-purple-400" />
+                            <span>GitHub</span>
+                          </>
+                        ) : (
+                          <>
+                            <Archive className="w-3 h-3 text-amber-400" />
+                            <span>ZIP</span>
+                          </>
+                        )}
+                      </span>
+                    </td>
+
+                    {/* Intake Status Badge */}
+                    <td className="py-3.5 px-6">
+                      <IntakeStatusBadge status={scan.intake_status || 'created'} />
+                    </td>
+
+                    {/* Scan Status Badge */}
+                    <td className="py-3.5 px-6">
+                      <StatusBadge status={scan.status} />
+                    </td>
+
+                    {/* Creation Timestamp */}
+                    <td className="py-3.5 px-6 text-slate-400 font-mono text-[11px]">
+                      {formatDate(scan.created_at)}
+                    </td>
+
+                    {/* Action */}
+                    <td className="py-3.5 px-6 text-right space-x-2">
+                      {canRun && onRunScan && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleRunClick(e, scan.id)}
+                          disabled={isRunning}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-[11px] transition-all shadow-sm disabled:opacity-50"
+                          title="Run Semgrep, Gitleaks, and OSV-Scanner"
+                        >
+                          <Play className="w-3 h-3 fill-current" />
+                          <span>{scan.status === 'created' ? 'Run Scan' : 'Re-scan'}</span>
+                        </button>
                       )}
-                    </span>
-                  </td>
 
-                  {/* Intake Status Badge */}
-                  <td className="py-3.5 px-6">
-                    <IntakeStatusBadge status={scan.intake_status || 'created'} />
-                  </td>
+                      {isRunning && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-950/60 text-amber-300 border border-amber-800 text-[11px] font-mono">
+                          <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+                          <span>Scanning...</span>
+                        </span>
+                      )}
 
-                  {/* Scan Status Badge */}
-                  <td className="py-3.5 px-6">
-                    <StatusBadge status={scan.status} />
-                  </td>
-
-                  {/* Creation Timestamp */}
-                  <td className="py-3.5 px-6 text-slate-400 font-mono text-[11px]">
-                    {formatDate(scan.created_at)}
-                  </td>
-
-                  {/* Action */}
-                  <td className="py-3.5 px-6 text-right">
-                    <button
-                      onClick={() => onSelectScan(scan.id)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-emerald-600/20 hover:text-emerald-300 text-slate-300 border border-slate-700 hover:border-emerald-500/40 font-medium transition-all"
-                    >
-                      <span>Inspect</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectScan(scan.id);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-emerald-600/20 hover:text-emerald-300 text-slate-300 border border-slate-700 hover:border-emerald-500/40 font-medium transition-all"
+                      >
+                        <span>Inspect</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

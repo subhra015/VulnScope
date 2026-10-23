@@ -76,6 +76,8 @@ backend/.env
 
 # Temporary scan artifacts (for future phases)
 backend/data/workspaces/
+backend/tools/
+*.exe
 temp/
 tmp/
 uploads/

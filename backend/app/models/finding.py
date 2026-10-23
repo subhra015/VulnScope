@@ -47,6 +47,11 @@ class Finding(Base):
         String(200),
         nullable=False,
     )  # e.g., "python.lang.security.insecure-deserialization"
+    category: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+    )  # "code", "secret", "dependency"
     title: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
@@ -73,6 +78,22 @@ class Finding(Base):
     )
     end_line: Mapped[Optional[int]] = mapped_column(
         Integer,
+        nullable=True,
+    )
+    package_name: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    package_version: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    ecosystem: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    fixed_version: Mapped[Optional[str]] = mapped_column(
+        String(100),
         nullable=True,
     )
     redacted_evidence: Mapped[Optional[str]] = mapped_column(

@@ -5,7 +5,7 @@ Uses pydantic-settings so every field can be overridden via .env or the shell.
 
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -63,6 +63,26 @@ class Settings(BaseSettings):
     # Maximum retention period in hours for completed workspaces before automatic cleanup (0 = disabled)
     workspace_retention_hours: int = 24
 
+    # --- Real Security Scanners Engine (Phase 3) ---
+    # Configurable paths to scanner binaries (default searches PATH and backend/tools/bin)
+    semgrep_binary_path: str = Field(default="semgrep")
+    gitleaks_binary_path: str = Field(default="gitleaks")
+    osv_scanner_binary_path: str = Field(default="osv-scanner")
+
+    # Scanner execution timeouts (seconds)
+    semgrep_timeout_seconds: float = 120.0
+    gitleaks_timeout_seconds: float = 60.0
+    osv_scanner_timeout_seconds: float = 90.0
+
+    # Output capture limit to prevent unbounded memory consumption (bytes) - default 20 MB
+    max_scanner_output_bytes: int = 20 * 1024 * 1024
+
+    # Maximum number of security scans that can run concurrently
+    max_concurrent_scans: int = 2
+
+    # Semgrep rules configuration (e.g. "p/default", "p/ci", "auto")
+    semgrep_rules_config: str = "p/default"
+
     model_config = SettingsConfigDict(
         env_file=str(BACKEND_DIR / ".env"),
         env_file_encoding="utf-8",
@@ -100,6 +120,60 @@ class Settings(BaseSettings):
             p = (BACKEND_DIR / p).resolve()
         p.mkdir(parents=True, exist_ok=True)
         return p
+
+    def resolve_scanner_binary(self, scanner_name: str) -> Optional[str]:
+        """
+        Resolves the executable path for a given scanner ('semgrep', 'gitleaks', 'osv-scanner').
+        Checks configured setting, system PATH, local backend/tools/bin, and common script locations.
+        Returns the resolved executable path as a string, or None if unavailable.
+        """
+        import shutil
+        import sys
+
+        configured_path: str = ""
+        if scanner_name == "semgrep":
+            configured_path = self.semgrep_binary_path
+        elif scanner_name == "gitleaks":
+            configured_path = self.gitleaks_binary_path
+        elif scanner_name in ("osv-scanner", "osv"):
+            configured_path = self.osv_scanner_binary_path
+
+        # 1. Direct configured path if it exists as an actual file
+        p = Path(configured_path)
+        if not p.is_absolute():
+            # Check relative to backend dir
+            cand = (BACKEND_DIR / p).resolve()
+            if cand.is_file() and os.access(cand, os.X_OK):
+                return str(cand)
+        elif p.is_file() and os.access(p, os.X_OK):
+            return str(p)
+
+        # 2. Check system PATH via shutil.which
+        which_result = shutil.which(configured_path)
+        if which_result:
+            return which_result
+
+        # Also try default tool name in PATH if configured path had an extension or custom name
+        base_name = "osv-scanner" if scanner_name in ("osv", "osv-scanner") else scanner_name
+        which_default = shutil.which(base_name)
+        if which_default:
+            return which_default
+
+        # 3. Check backend/tools/bin/
+        tools_bin = BACKEND_DIR / "tools" / "bin"
+        for ext in ("", ".exe", ".cmd", ".bat"):
+            cand = tools_bin / f"{base_name}{ext}"
+            if cand.is_file() and os.access(cand, os.X_OK):
+                return str(cand)
+
+        # 4. Check current Python environment Scripts directory (e.g. for semgrep.exe)
+        py_scripts = Path(sys.executable).parent / "Scripts"
+        for ext in ("", ".exe"):
+            cand = py_scripts / f"{base_name}{ext}"
+            if cand.is_file() and os.access(cand, os.X_OK):
+                return str(cand)
+
+        return None
 
 
 # Shared singleton instance
