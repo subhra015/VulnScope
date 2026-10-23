@@ -126,6 +126,35 @@ export const api = {
   async getScan(scanId: string): Promise<ScanDetail> {
     return request<ScanDetail>(`/api/scans/${encodeURIComponent(scanId)}`);
   },
+
+  /**
+   * Phase 3: Trigger multi-engine security scanning (Semgrep, Gitleaks, OSV-Scanner).
+   */
+  async runScan(scanId: string): Promise<{ scan_id: string; status: string; message: string }> {
+    return request<{ scan_id: string; status: string; message: string }>(
+      `/api/scans/${encodeURIComponent(scanId)}/run`,
+      { method: 'POST' }
+    );
+  },
+
+  /**
+   * Phase 3: Retrieve normalized findings with optional filtering and pagination.
+   */
+  async getScanFindings(
+    scanId: string,
+    params: { scanner?: string; category?: string; severity?: string; limit?: number; offset?: number } = {}
+  ): Promise<{ total: number; items: any[]; limit: number; offset: number }> {
+    const q = new URLSearchParams();
+    if (params.scanner) q.set('scanner', params.scanner);
+    if (params.category) q.set('category', params.category);
+    if (params.severity) q.set('severity', params.severity);
+    if (params.limit !== undefined) q.set('limit', String(params.limit));
+    if (params.offset !== undefined) q.set('offset', String(params.offset));
+    const qs = q.toString();
+    return request<{ total: number; items: any[]; limit: number; offset: number }>(
+      `/api/scans/${encodeURIComponent(scanId)}/findings${qs ? `?${qs}` : ''}`
+    );
+  },
 };
 
 export { ApiError };

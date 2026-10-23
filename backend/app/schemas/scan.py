@@ -4,10 +4,11 @@ Pydantic schemas for Scan requests and responses.
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.finding import FindingResponse
+from app.schemas.scanner_run import ScannerRunResponse
 
 
 class SourceType(str, Enum):
@@ -57,7 +58,7 @@ class ScanResponse(BaseModel):
     project_name: str = Field(..., description="Project name")
     source_type: str = Field(..., description="Source type (github or zip)")
     source_reference: Optional[str] = Field(default=None, description="Source reference")
-    status: str = Field(..., description="Current status of the security scan (e.g. 'created')")
+    status: str = Field(..., description="Current status of the security scan ('created', 'running', 'completed', 'partial', 'failed')")
     intake_status: Optional[str] = Field(
         default="created",
         description="Current status of source intake ('created', 'ingesting', 'ready', 'failed')",
@@ -78,7 +79,21 @@ class ScanDetailResponse(ScanResponse):
     )
     findings: List[FindingResponse] = Field(
         default_factory=list,
-        description="Security findings for this scan (empty in Phase 1 and Phase 2)",
+        description="Security findings for this scan",
+    )
+    scanner_runs: List[ScannerRunResponse] = Field(
+        default_factory=list,
+        description="Individual scanner run executions (Semgrep, Gitleaks, OSV-Scanner)",
+    )
+    findings_summary: Optional[Dict[str, int]] = Field(
+        default=None,
+        description="Summary metrics (total, code, secret, dependency, critical, high, medium, low)",
     )
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ScanRunResponse(BaseModel):
+    scan_id: str = Field(..., description="Scan identifier")
+    status: str = Field(..., description="Current scan status, e.g. 'running'")
+    message: str = Field(..., description="Status message")

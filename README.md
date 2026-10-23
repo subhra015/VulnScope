@@ -1,7 +1,7 @@
 # VulnScope — Intelligent Application Security & Dependency Risk Analyzer
 
 [![VulnScope CI](https://github.com/vulnscope/vulnscope/actions/workflows/ci.yml/badge.svg)](https://github.com/vulnscope/vulnscope/actions/workflows/ci.yml)
-[![Phase](https://img.shields.io/badge/Phase-2%3A%20Secure%20Intake-emerald)](https://github.com/vulnscope/vulnscope)
+[![Phase](https://img.shields.io/badge/Phase-3%3A%20Real%20Security%20Scanner%20Engine-blue)](https://github.com/vulnscope/vulnscope)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.11%2B-009688)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/Frontend-React%2018%2B%20%7C%20Vite%20%7C%20TypeScript-61dafb)](https://react.dev)
 [![Database](https://img.shields.io/badge/Database-SQLite%20%7C%20SQLAlchemy%202.x-003B57)](https://www.sqlalchemy.org)
@@ -393,8 +393,115 @@ The frontend dashboard is available at: [http://localhost:5173](http://localhost
 
 ---
 
-## 11. Known Limitations in Phase 2
+## 11. Phase 3 — Real Security Scanner Engine
 
-1. **Private GitHub Repositories**: Only public repositories are supported in this phase. GitHub Personal Access Tokens and OAuth flows are not yet supported.
-2. **Tarballs / Git Clone**: Only ZIP snapshots are unpacked; raw `.tar.gz` and `.git` shallow clones are not accepted.
-3. **Security Scanners**: Semgrep SAST, Gitleaks, and OSV SCA scanner workers will be introduced in Phase 3.
+### Overview
+Phase 3 integrates three production security analysis engines into a unified background pipeline:
+1. **Semgrep** (Static Application Security Testing - SAST): Analyzes code for security flaws (e.g., SQL injection, insecure deserialization, command execution, broken crypto).
+2. **Gitleaks** (Secret Detection): Scans snapshot files for exposed API tokens, private keys, access credentials, and webhooks.
+3. **OSV-Scanner** (Software Composition Analysis - SCA): Identifies known CVEs and vulnerabilities in project lockfiles and dependency manifests (`requirements.txt`, `package-lock.json`, etc.).
+
+---
+
+### Security Safeguards & Threat Controls
+
+| Threat | Safeguard Implemented |
+| :--- | :--- |
+| **Command Injection** | Subprocess commands are executed with `shell=False` as strict argument lists. No user input or file names are evaluated in shell contexts. |
+| **Untrusted Code Execution** | **Zero untrusted repository code is executed.** No build scripts, test suites, `npm install`, `pip install`, or OSV call analysis (`--call-analysis`) are permitted. |
+| **Credential & Secret Leakage** | Gitleaks matches, sensitive line contents, and raw secret values are **strictly scrubbed** and never saved to the database, logs, or API responses. Secret findings are represented as `"Potential exposed credential detected"`. |
+| **Out-of-Tree Report Security** | Gitleaks output reports are generated **outside** the scanned source tree (in temporary directories or workspace root) and guaranteed to be deleted immediately after parsing. |
+| **Resource Exhaustion** | Strict per-scanner execution timeouts (Semgrep: 120s, Gitleaks: 60s, OSV: 90s) and bounded process output capture (max 20 MB). Timed-out processes are automatically killed. |
+| **Cross-Scan Contamination** | Concurrency semaphore enforces a maximum of concurrent scans (`MAX_CONCURRENT_SCANS=2`). Duplicate starts for an already active scan are rejected with HTTP 409 Conflict. |
+| **Environment Variable Scrubbing** | Subprocesses run in a sanitized environment that excludes application secrets, API keys, database credentials, and internal paths. |
+
+---
+
+### Scanner CLI Installation & Verification
+
+#### 1. Semgrep (SAST)
+Installed via pip in Python 3.11+:
+```powershell
+pip install semgrep
+semgrep --version
+# Expected: 1.x (e.g. 1.182.1)
+```
+
+#### 2. Gitleaks (Secrets)
+Download the Windows x64 binary from [Gitleaks GitHub Releases](https://github.com/gitleaks/gitleaks/releases):
+```powershell
+# Place in backend\tools\bin\gitleaks.exe
+.\backend\tools\bin\gitleaks.exe version
+# Expected: 8.x (e.g. 8.30.1)
+```
+
+#### 3. OSV-Scanner (SCA Dependencies)
+Download the standalone binary from [OSV-Scanner GitHub Releases](https://github.com/google/osv-scanner/releases):
+```powershell
+# Place in backend\tools\bin\osv-scanner.exe
+.\backend\tools\bin\osv-scanner.exe --version
+# Expected: 2.x (e.g. 2.7.0)
+```
+
+Automatic discovery order:
+1. `SEMGREP_BINARY_PATH`, `GITLEAKS_BINARY_PATH`, `OSV_SCANNER_BINARY_PATH` from `.env`
+2. System `PATH`
+3. Local `backend/tools/bin/<tool>.exe`
+4. Python environment `Scripts/<tool>.exe`
+
+If any scanner binary is missing, it is reported as `unavailable` with zero hardcoded findings fabricated.
+
+---
+
+### Scan Lifecycle States
+
+```text
+[Repository / ZIP Intake: ready]
+              │
+              ▼ (POST /api/scans/{id}/run)
+       status: "running"
+              │
+    ┌─────────┴─────────┐
+    ▼                   ▼
+(All Scanners OK)   (At least 1 Succeeded,
+    │                others Failed/Unavailable)
+    ▼                   │
+status: "completed"     ▼
+                  status: "partial"
+```
+
+- **`completed`**: All configured scanners ran and succeeded (even if zero vulnerabilities were found).
+- **`partial`**: At least one scanner succeeded, but one or more failed, timed out, or was unavailable.
+- **`failed`**: All scanners failed or were unavailable, or an unrecoverable orchestration error occurred.
+
+---
+
+### Supported & Tested Ecosystems
+
+- **Languages Tested (Semgrep)**: Python, JavaScript, TypeScript, Multi-language.
+- **Dependency Formats (OSV-Scanner)**: `requirements.txt` (Python/PyPI), `package-lock.json` (npm/Node.js).
+- **Secret Rules (Gitleaks)**: Slack Webhooks, GitHub Personal Access Tokens, AWS keys, generic credentials.
+
+---
+
+### Known Limitations
+
+1. **Subprocess vs OS Containerization**: Subprocesses use `shell=False` and environment sanitization, but full operating system containerization (e.g. Docker / Linux namespaces) is outside Phase 3.
+2. **Git History in Snapshot Archives**: Ingested ZIP archives and GitHub snapshot downloads do not contain full `.git` commit histories. Gitleaks therefore inspects the staged snapshot files rather than past historical commits.
+3. **No Automatic Remediation**: Fixing code or upgrading dependencies in-place is deferred to future phases.
+
+---
+
+## 12. Verification and Automated Testing
+
+Run the complete backend test suite (83 tests covering models, intake, adapters, safety, orchestrator, and live scanners):
+```powershell
+cd d:\Projects\VulnScope
+python -m pytest backend/tests -v
+```
+
+Run the frontend TypeScript checks and production bundle build:
+```powershell
+cd d:\Projects\VulnScope\frontend
+npm run build
+```

@@ -13,6 +13,7 @@ from app.models.base import Base, UTCDateTime, generate_uuid, utc_now
 if TYPE_CHECKING:
     from app.models.repository import Repository
     from app.models.finding import Finding
+    from app.models.scanner_run import ScannerRun
 
 
 class Scan(Base):
@@ -93,6 +94,12 @@ class Scan(Base):
         "Finding",
         back_populates="scan",
         cascade="all, delete-orphan",
+    )
+    scanner_runs: Mapped[List["ScannerRun"]] = relationship(
+        "ScannerRun",
+        back_populates="scan",
+        cascade="all, delete-orphan",
+        order_by="ScannerRun.scanner_name",
     )
 
     def __repr__(self) -> str:

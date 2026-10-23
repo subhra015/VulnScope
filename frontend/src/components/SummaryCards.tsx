@@ -1,81 +1,114 @@
 import React from 'react';
-import { Layers, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Layers, KeyRound, PackageSearch, Code2 } from 'lucide-react';
 import { Scan } from '../types';
 
 interface SummaryCardsProps {
   scans: Scan[];
   isLoading: boolean;
+  activeScanSummary?: {
+    total: number;
+    code: number;
+    secret: number;
+    dependency: number;
+  } | null;
 }
 
-export const SummaryCards: React.FC<SummaryCardsProps> = ({ scans, isLoading }) => {
+export const SummaryCards: React.FC<SummaryCardsProps> = ({ scans, isLoading, activeScanSummary }) => {
   const totalScans = scans.length;
-  const completedScans = scans.filter((s) => s.status.toLowerCase() === 'completed').length;
-  // In Phase 1, scanner tools (Semgrep, Gitleaks, OSV) are not yet integrated,
-  // so findings count is 0 based on real database records.
-  const totalFindings = 0;
+  const completedScans = scans.filter(
+    (s) => s.status.toLowerCase() === 'completed' || s.status.toLowerCase() === 'partial'
+  ).length;
+  const runningScans = scans.filter((s) => s.status.toLowerCase() === 'running').length;
+
+  const codeFindings = activeScanSummary ? activeScanSummary.code : 0;
+  const secretFindings = activeScanSummary ? activeScanSummary.secret : 0;
+  const depFindings = activeScanSummary ? activeScanSummary.dependency : 0;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-      {/* Total Scan Records Card */}
-      <div className="bg-slate-900/80 rounded-xl p-5 border border-slate-800 shadow-sm relative overflow-hidden">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Total Scans Card */}
+      <div className="bg-slate-900/80 rounded-xl p-4 border border-slate-800 shadow-sm relative overflow-hidden">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Total Scan Records
+            Total Scans
           </span>
           <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
             <Layers className="w-4 h-4" />
           </div>
         </div>
-        <div className="mt-3 flex items-baseline gap-2">
-          <span className="text-3xl font-bold font-mono text-slate-100">
+        <div className="mt-2.5 flex items-baseline gap-2">
+          <span className="text-2xl font-bold font-mono text-slate-100">
             {isLoading ? '...' : totalScans}
           </span>
-          <span className="text-xs text-slate-500">records in DB</span>
+          <span className="text-xs text-slate-400">
+            ({completedScans} completed{runningScans > 0 ? `, ${runningScans} running` : ''})
+          </span>
         </div>
-        <p className="mt-2 text-xs text-slate-400">
-          Database records registered in SQLite storage.
+        <p className="mt-1 text-[11px] text-slate-500">
+          Source repositories & archives ingested
         </p>
       </div>
 
-      {/* Completed Scans Card */}
-      <div className="bg-slate-900/80 rounded-xl p-5 border border-slate-800 shadow-sm relative overflow-hidden">
+      {/* Code Findings (Semgrep SAST) */}
+      <div className="bg-slate-900/80 rounded-xl p-4 border border-slate-800 shadow-sm relative overflow-hidden">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Completed Scans
+            Code SAST Issues
           </span>
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <CheckCircle2 className="w-4 h-4" />
+          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+            <Code2 className="w-4 h-4" />
           </div>
         </div>
-        <div className="mt-3 flex items-baseline gap-2">
-          <span className="text-3xl font-bold font-mono text-slate-100">
-            {isLoading ? '...' : completedScans}
+        <div className="mt-2.5 flex items-baseline gap-2">
+          <span className="text-2xl font-bold font-mono text-indigo-400">
+            {isLoading ? '...' : codeFindings}
           </span>
-          <span className="text-xs text-slate-500">executed</span>
+          <span className="text-xs text-slate-400">Semgrep rules</span>
         </div>
-        <p className="mt-2 text-xs text-slate-400">
-          Phase 1: scans initialize in <span className="text-cyan-400 font-mono">created</span> status.
+        <p className="mt-1 text-[11px] text-slate-500">
+          Static analysis security defects
         </p>
       </div>
 
-      {/* Findings Card */}
-      <div className="bg-slate-900/80 rounded-xl p-5 border border-slate-800 shadow-sm relative overflow-hidden">
+      {/* Secret Findings (Gitleaks) */}
+      <div className="bg-slate-900/80 rounded-xl p-4 border border-slate-800 shadow-sm relative overflow-hidden">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Security Findings
+            Exposed Secrets
           </span>
-          <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-            <ShieldAlert className="w-4 h-4" />
+          <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+            <KeyRound className="w-4 h-4" />
           </div>
         </div>
-        <div className="mt-3 flex items-baseline gap-2">
-          <span className="text-3xl font-bold font-mono text-slate-100">
-            {isLoading ? '...' : totalFindings}
+        <div className="mt-2.5 flex items-baseline gap-2">
+          <span className="text-2xl font-bold font-mono text-rose-400">
+            {isLoading ? '...' : secretFindings}
           </span>
-          <span className="text-xs text-slate-500">findings</span>
+          <span className="text-xs text-slate-400">credentials</span>
         </div>
-        <p className="mt-2 text-xs text-slate-400">
-          Scanners (Semgrep, Gitleaks, OSV) activate in Phase 3.
+        <p className="mt-1 text-[11px] text-slate-500">
+          Gitleaks secret detection results
+        </p>
+      </div>
+
+      {/* Dependency Vulnerabilities (OSV) */}
+      <div className="bg-slate-900/80 rounded-xl p-4 border border-slate-800 shadow-sm relative overflow-hidden">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Dependency CVEs
+          </span>
+          <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+            <PackageSearch className="w-4 h-4" />
+          </div>
+        </div>
+        <div className="mt-2.5 flex items-baseline gap-2">
+          <span className="text-2xl font-bold font-mono text-purple-400">
+            {isLoading ? '...' : depFindings}
+          </span>
+          <span className="text-xs text-slate-400">SCA advisories</span>
+        </div>
+        <p className="mt-1 text-[11px] text-slate-500">
+          OSV-Scanner known CVEs & fixes
         </p>
       </div>
     </div>
