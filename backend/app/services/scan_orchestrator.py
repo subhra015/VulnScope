@@ -25,6 +25,7 @@ from app.scanners.semgrep import SemgrepScanner
 from app.scanners.gitleaks import GitleaksScanner
 from app.scanners.osv_scanner import OSVScanner
 from app.services.finding_normalizer import FindingNormalizer, NormalizedFindingData
+from app.services.risk_scorer import RiskScorer
 from app.services.workspace import WorkspaceSecurityError, workspace_manager
 
 logger = logging.getLogger(__name__)
@@ -215,6 +216,18 @@ class ScanOrchestrator:
                 run_rec.findings_count = count
 
             for item in normalized_findings:
+                risk_exp = RiskScorer.calculate_score(
+                    severity=item.severity,
+                    confidence=item.confidence,
+                    category=item.category,
+                    rule_id=item.rule_id,
+                    cvss_score=item.cvss_score,
+                    file_path=item.file_path,
+                    start_line=item.start_line,
+                    package_name=item.package_name,
+                    package_version=item.package_version,
+                    fixed_version=item.fixed_version,
+                )
                 finding_model = Finding(
                     scan_id=scan_id,
                     scanner_name=item.scanner_name,
@@ -235,6 +248,9 @@ class ScanOrchestrator:
                     remediation_guidance=item.remediation_guidance,
                     advisory_url=item.advisory_url,
                     finding_fingerprint=item.finding_fingerprint,
+                    risk_score=risk_exp.score,
+                    priority=risk_exp.priority,
+                    cvss_score=item.cvss_score,
                 )
                 db.add(finding_model)
 

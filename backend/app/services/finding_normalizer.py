@@ -33,6 +33,7 @@ class NormalizedFindingData:
     remediation_guidance: Optional[str] = None
     advisory_url: Optional[str] = None
     finding_fingerprint: Optional[str] = None
+    cvss_score: Optional[float] = None
 
 
 class FindingNormalizer:
@@ -245,6 +246,7 @@ class FindingNormalizer:
                 severity = spec_sev
 
         # Check CVSS if present
+        cvss_val: Optional[float] = None
         vuln_severities = vuln.get("severity", [])
         if isinstance(vuln_severities, list):
             for s_entry in vuln_severities:
@@ -265,6 +267,7 @@ class FindingNormalizer:
                             val = float(floats[0])
 
                     if val is not None:
+                        cvss_val = val
                         if val >= 9.0:
                             severity = "critical"
                         elif val >= 7.0:
@@ -323,6 +326,7 @@ class FindingNormalizer:
             remediation_guidance=remediation,
             advisory_url=advisory_url,
             finding_fingerprint=fingerprint,
+            cvss_score=cvss_val,
         )
 
     @classmethod

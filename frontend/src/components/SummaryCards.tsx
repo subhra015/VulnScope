@@ -10,6 +10,14 @@ interface SummaryCardsProps {
     code: number;
     secret: number;
     dependency: number;
+    critical?: number;
+    high?: number;
+    medium?: number;
+    low?: number;
+    priority_critical?: number;
+    priority_high?: number;
+    priority_medium?: number;
+    priority_low?: number;
   } | null;
 }
 
@@ -111,6 +119,35 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ scans, isLoading, ac
           OSV-Scanner known CVEs & fixes
         </p>
       </div>
+
+      {/* Priority Distribution Banner if active scan summary is present */}
+      {activeScanSummary && (
+        <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-slate-900/60 rounded-xl p-3 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-slate-200">Latest Scan Risk Priorities:</span>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-red-950/80 text-red-300 border border-red-800 font-mono font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+              Critical: {activeScanSummary.priority_critical ?? 0}
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-orange-950/80 text-orange-300 border border-orange-800 font-mono font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
+              High: {activeScanSummary.priority_high ?? 0}
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800 font-mono font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              Medium: {activeScanSummary.priority_medium ?? 0}
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-sky-950/80 text-sky-300 border border-sky-800 font-mono font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+              Low: {activeScanSummary.priority_low ?? 0}
+            </span>
+          </div>
+
+          <span className="text-[11px] text-slate-500 italic">
+            Deterministic prioritization &bull; Not a guarantee of production exploitability
+          </span>
+        </div>
+      )}
     </div>
   );
 };

@@ -10,6 +10,10 @@ import {
   CreateScanPayload,
   GithubIntakePayload,
   ApiValidationError,
+  FindingDetail,
+  RiskSummary,
+  ScanComparisonResponse,
+  FindingsListResponse,
 } from '../types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/+$/, '');
@@ -138,21 +142,62 @@ export const api = {
   },
 
   /**
-   * Phase 3: Retrieve normalized findings with optional filtering and pagination.
+   * Phase 3 & 4: Retrieve normalized findings with risk prioritization, filtering, and pagination.
    */
   async getScanFindings(
     scanId: string,
-    params: { scanner?: string; category?: string; severity?: string; limit?: number; offset?: number } = {}
-  ): Promise<{ total: number; items: any[]; limit: number; offset: number }> {
+    params: {
+      scanner?: string;
+      category?: string;
+      severity?: string;
+      priority?: string;
+      sortBy?: string;
+      sortOrder?: string;
+      baselineScanId?: string;
+      limit?: number;
+      offset?: number;
+    } = {}
+  ): Promise<FindingsListResponse> {
     const q = new URLSearchParams();
     if (params.scanner) q.set('scanner', params.scanner);
     if (params.category) q.set('category', params.category);
     if (params.severity) q.set('severity', params.severity);
+    if (params.priority) q.set('priority', params.priority);
+    if (params.sortBy) q.set('sort_by', params.sortBy);
+    if (params.sortOrder) q.set('sort_order', params.sortOrder);
+    if (params.baselineScanId) q.set('baseline_scan_id', params.baselineScanId);
     if (params.limit !== undefined) q.set('limit', String(params.limit));
     if (params.offset !== undefined) q.set('offset', String(params.offset));
     const qs = q.toString();
-    return request<{ total: number; items: any[]; limit: number; offset: number }>(
+    return request<FindingsListResponse>(
       `/api/scans/${encodeURIComponent(scanId)}/findings${qs ? `?${qs}` : ''}`
+    );
+  },
+
+  /**
+   * Phase 4: Retrieve single finding detail with score explanation and remediation guidance.
+   */
+  async getFindingDetail(scanId: string, findingId: string): Promise<FindingDetail> {
+    return request<FindingDetail>(
+      `/api/scans/${encodeURIComponent(scanId)}/findings/${encodeURIComponent(findingId)}`
+    );
+  },
+
+  /**
+   * Phase 4: Retrieve risk summary metrics and priority distribution for a scan.
+   */
+  async getScanRiskSummary(scanId: string): Promise<RiskSummary> {
+    return request<RiskSummary>(
+      `/api/scans/${encodeURIComponent(scanId)}/risk-summary`
+    );
+  },
+
+  /**
+   * Phase 4: Compare findings between two scans of the same repository lineage.
+   */
+  async compareScans(scanId: string, baselineScanId: string): Promise<ScanComparisonResponse> {
+    return request<ScanComparisonResponse>(
+      `/api/scans/${encodeURIComponent(scanId)}/comparison/${encodeURIComponent(baselineScanId)}`
     );
   },
 };

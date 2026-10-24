@@ -229,3 +229,98 @@ export const CategoryBadge: React.FC<CategoryBadgeProps> = ({ category }) => {
       );
   }
 };
+
+interface PriorityBadgeProps {
+  priority?: string | null;
+  score?: number | null;
+  showScore?: boolean;
+}
+
+export const PriorityBadge: React.FC<PriorityBadgeProps> = ({ priority, score, showScore = true }) => {
+  const norm = (priority || 'medium').toLowerCase();
+  let colorClasses = 'bg-slate-800 text-slate-300 border-slate-700';
+  let label = 'Low Priority';
+
+  if (norm === 'critical') {
+    colorClasses = 'bg-red-950/90 text-red-300 border-red-700 shadow-sm shadow-red-950/50';
+    label = 'Critical Priority';
+  } else if (norm === 'high') {
+    colorClasses = 'bg-orange-950/90 text-orange-300 border-orange-700';
+    label = 'High Priority';
+  } else if (norm === 'medium') {
+    colorClasses = 'bg-amber-950/80 text-amber-300 border-amber-700';
+    label = 'Medium Priority';
+  } else if (norm === 'low') {
+    colorClasses = 'bg-slate-900 text-sky-300 border-sky-800/70';
+    label = 'Low Priority';
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${colorClasses}`}
+      title={`VulnScope Deterministic Risk Priority: ${label}${score !== undefined && score !== null ? ` (Score: ${score}/100)` : ''}`}
+    >
+      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80"></span>
+      <span>{norm}</span>
+      {showScore && score !== undefined && score !== null && (
+        <span className="ml-0.5 px-1 py-px rounded bg-black/40 font-mono text-[9px] font-semibold text-slate-100">
+          {score}
+        </span>
+      )}
+    </span>
+  );
+};
+
+interface LifecycleBadgeProps {
+  status?: string | null;
+}
+
+export const LifecycleBadge: React.FC<LifecycleBadgeProps> = ({ status }) => {
+  const norm = (status || 'new').toLowerCase();
+  switch (norm) {
+    case 'new':
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-800/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          new
+        </span>
+      );
+    case 'recurring':
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-950/70 text-amber-300 border border-amber-800/60">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          recurring
+        </span>
+      );
+    case 'resolved':
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-950/80 text-blue-300 border border-blue-800/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+          resolved
+        </span>
+      );
+    case 'changed':
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-purple-950/80 text-purple-300 border border-purple-800/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+          changed
+        </span>
+      );
+    case 'unconfirmed':
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-900 text-slate-400 border border-slate-700"
+          title="Scanner was unavailable or failed; resolution unverified"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+          unconfirmed
+        </span>
+      );
+    default:
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-900 text-slate-400 border border-slate-800">
+          {status}
+        </span>
+      );
+  }
+};

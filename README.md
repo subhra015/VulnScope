@@ -1,7 +1,7 @@
 # VulnScope — Intelligent Application Security & Dependency Risk Analyzer
 
 [![VulnScope CI](https://github.com/vulnscope/vulnscope/actions/workflows/ci.yml/badge.svg)](https://github.com/vulnscope/vulnscope/actions/workflows/ci.yml)
-[![Phase](https://img.shields.io/badge/Phase-3%3A%20Real%20Security%20Scanner%20Engine-blue)](https://github.com/vulnscope/vulnscope)
+[![Phase](https://img.shields.io/badge/Phase-4%3A%20Risk%20Prioritization%20%26%20Lifecycle-blue)](https://github.com/vulnscope/vulnscope)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.11%2B-009688)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/Frontend-React%2018%2B%20%7C%20Vite%20%7C%20TypeScript-61dafb)](https://react.dev)
 [![Database](https://img.shields.io/badge/Database-SQLite%20%7C%20SQLAlchemy%202.x-003B57)](https://www.sqlalchemy.org)
@@ -492,9 +492,130 @@ status: "completed"     ▼
 
 ---
 
-## 12. Verification and Automated Testing
+## 13. Phase 4 — Explainable Risk Prioritization, Remediation Guidance, and Finding Lifecycle
 
-Run the complete backend test suite (83 tests covering models, intake, adapters, safety, orchestrator, and live scanners):
+Phase 4 introduces an explainable, deterministic finding-risk prioritization engine, grounded remediation recommendations, finding lifecycle tracking across scans, and an interactive risk-centric inspection interface.
+
+### 13.1 Deterministic Risk-Priority Engine
+
+VulnScope computes an explainable, bounded risk priority score between `0` and `100` for every finding. The score is computed using deterministic Python logic without ungrounded heuristics or LLM hallucinations.
+
+#### Scoring Formula & Weight Distribution
+
+The final score aggregates four weighted dimensions:
+
+$$\text{Risk Score} = \min\left(100, \max\left(0, \sum (\text{Component Raw Score} \times \text{Weight})\right)\right)$$
+
+| Dimension | Weight | Raw Score Range | Description & Signals |
+| :--- | :---: | :---: | :--- |
+| **1. Base Severity / CVSS** | **50%** (0.50) | 0–100 | **Authoritative CVSS v3 base score** scaled directly ($score = \text{CVSS} \times 10$) when available for dependency findings to avoid double-counting. Otherwise maps scanner severity: Critical (95), High (80), Medium (50), Low (25), Info (10). Unspecified severity applies a conservative Medium baseline (50) with documented uncertainty. |
+| **2. Detection Confidence** | **20%** (0.20) | 0–100 | Scanner-reported confidence level: High (95), Medium (70), Low (40). Absent confidence defaults to conservative 65.0 with missing evidence noted. |
+| **3. Category & Exploitability Signal** | **20%** (0.20) | 0–100 | **Secret finding** (95: direct credential abuse risk / immediate blast radius). **Code finding** (85: high-impact patterns such as SQLi, RCE, command injection, SSRF, auth bypass, deserialization; 65: XSS/CORS/crypto; 45: standard rule). **Dependency** (75: unpatched / no fixed version known; 60: fixed version available; 55: general). |
+| **4. Context & Actionability** | **10%** (0.10) | 0–100 | **Precision bonus**: pinpointed file & line (+20) or verified package coordinates (+15). Explicit asset context (e.g. verified public repository or flagged production asset) applies up to +10 modifier only when explicitly provided and persisted. |
+
+#### Priority Tiers
+
+- **`Critical`** (Score 85–100): Immediate danger or credential exposure; requires prompt mitigation.
+- **`High`** (Score 70–84): Severe flaw or high-CVSS dependency with proven attack vector.
+- **`Medium`** (Score 40–69): Moderate impact vulnerability, defensive flaw, or unverified confidence.
+- **`Low`** (Score 0–39): Minor code quality notice, low severity finding, or informational item.
+
+#### Explainability & Uncertainty Retention
+
+Every score includes an explanation payload containing:
+- `score`: integer 0–100
+- `priority`: tier identifier
+- `factors`: itemized breakdown of weights, raw scores, and point contributions
+- `evidence`: raw input values used
+- `reason`: concise human-readable summary
+- `missing_evidence`: explicit caveats (e.g. missing CVSS, absent confidence, unknown asset context)
+
+> [!NOTE]
+> Scanner severity is kept separate from VulnScope's risk priority. Scanner severity is preserved intact and never overwritten. Risk priority scores reflect prioritization ranking based on available evidence and do not guarantee production exploitability.
+
+---
+
+### 13.2 Actionable Remediation Guidance
+
+Remediation recommendations are category-specific, non-destructive, and strictly grounded in normalized finding data. VulnScope does **not** execute automated fixes or modify scanned code in this phase.
+
+#### 1. SAST Code Findings (Semgrep)
+- Leverages scanner rule metadata, CWE, and OWASP references.
+- Contrasts unsafe implementation patterns with safer alternatives (e.g., parameterized queries vs string concatenation; `shell=False` argument lists vs shell invocation).
+- Links exclusively to trusted security documentation (`owasp.org`, `cwe.mitre.org`, `nvd.nist.gov`, `semgrep.dev`).
+
+#### 2. Secret Leak Findings (Gitleaks)
+- Recommends immediate credential revocation and rotation at the issuing service.
+- Guides migration to environment variables or enterprise secrets managers (AWS Secrets Manager, HashiCorp Vault, Azure Key Vault).
+- **Critical caveat**: explicitly explains that removing the secret from source code or rewriting Git history does **not** invalidate an exposed credential.
+- **Data safety**: raw secret values are never revealed, persisted, or echoed in API responses.
+
+#### 3. Dependency Findings (OSV-Scanner)
+- Recommends upgrade to the specific fixed version **only** when verified advisory data exists.
+- Warns developers to inspect changelogs for breaking changes and run regression tests before upgrading.
+- When no fixed version is recorded, clearly states that no verified fix could be established and recommends compensating controls.
+
+---
+
+### 13.3 Finding Lifecycle & Scan Comparison
+
+VulnScope compares findings between successive eligible scans of the same repository lineage without breaking historical records.
+
+```text
+[Target Scan Findings] ◄──────── Compare ────────► [Baseline Scan Findings]
+          │                                                   │
+          ├─ Matched unchanged ─────────────► "recurring"     │
+          ├─ Matched with modified attrs ──► "changed"       │
+          ├─ Not present in baseline ───────► "new"           │
+          │                                                   │
+          └─ Present in baseline, absent in target:           │
+               ├─ Scanner completed successfully ─────────────┴─► "resolved"
+               └─ Scanner failed / unavailable / omitted ──────┴─► "unconfirmed" (NO false resolution)
+```
+
+#### Lifecycle State Definitions
+- **`new`**: Detected in target scan, not present in the eligible baseline scan.
+- **`recurring`**: Finding persists across scans with identical core attributes.
+- **`changed`**: Finding persists, but relevant evidence or attributes shifted (e.g. line number shift, severity change, package version upgrade, or fixed version update).
+- **`resolved`**: Present in baseline, but absent from a complete, successful target scan where the relevant scanner ran and succeeded.
+- **`unconfirmed`**: Baseline finding absent in target scan, but the relevant scanner failed or was unavailable; cannot confirm resolution.
+
+#### Comparability Prerequisites & Prohibitions
+1. **Unrelated Repositories**: Scans from different repositories or projects are **never** compared (rejected with HTTP 400).
+2. **Ineligible States**: Scans still queued, running, or failed cannot serve as valid baselines.
+3. **No False Resolution**: If a scanner fails or is unavailable in the target scan, associated baseline findings are flagged as `unconfirmed` rather than `resolved`. A missing finding does not prove a fix if scanner coverage was partial.
+
+---
+
+### 13.4 Phase 4 API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/scans/{id}/findings` | List findings with priority sorting (`sort_by=priority`), filters (priority, scanner, category, severity), pagination, and lifecycle annotation. |
+| `GET` | `/api/scans/{id}/findings/{finding_id}` | Retrieve single finding with full deterministic score explanation, factor breakdown, and structured remediation guidance. |
+| `GET` | `/api/scans/{id}/risk-summary` | Retrieve scan risk distribution (Critical, High, Medium, Low), mean/max scores, category averages, and scanner coverage notes. |
+| `GET` | `/api/scans/{id}/comparison/{baseline_id}` | Compare target scan against an eligible baseline scan of the same repository lineage. |
+
+---
+
+### 13.5 Database Migrations
+
+Apply the Phase 4 database migration adding `risk_score`, `priority`, and `cvss_score` columns with indexed query support:
+```powershell
+python -m alembic -c backend/alembic.ini upgrade head
+```
+
+Verify migration status:
+```powershell
+python -m alembic -c backend/alembic.ini current
+# Expected: d4e5f6a7b8c9 (head)
+```
+
+---
+
+## 14. Verification and Automated Testing
+
+Run the complete backend test suite (107 automated tests across all phases):
 ```powershell
 cd d:\Projects\VulnScope
 python -m pytest backend/tests -v
