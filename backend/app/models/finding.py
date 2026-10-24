@@ -6,7 +6,7 @@ In Phase 1, no scanner results are generated.
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, UTCDateTime, generate_uuid, utc_now
@@ -106,6 +106,20 @@ class Finding(Base):
     )
     advisory_url: Mapped[Optional[str]] = mapped_column(
         String(1000),
+        nullable=True,
+    )
+    risk_score: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        index=True,
+    )
+    priority: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+    )
+    cvss_score: Mapped[Optional[float]] = mapped_column(
+        Float,
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(

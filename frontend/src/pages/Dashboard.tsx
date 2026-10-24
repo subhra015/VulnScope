@@ -25,6 +25,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
     code: number;
     secret: number;
     dependency: number;
+    critical?: number;
+    high?: number;
+    medium?: number;
+    low?: number;
+    priority_critical?: number;
+    priority_high?: number;
+    priority_medium?: number;
+    priority_low?: number;
   } | null>(null);
 
   // If any scan is currently running in the list, auto-refresh every 3s
