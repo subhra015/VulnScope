@@ -1,7 +1,7 @@
 # VulnScope — Intelligent Application Security & Dependency Risk Analyzer
 
 [![VulnScope CI](https://github.com/vulnscope/vulnscope/actions/workflows/ci.yml/badge.svg)](https://github.com/vulnscope/vulnscope/actions/workflows/ci.yml)
-[![Phase](https://img.shields.io/badge/Phase-4%3A%20Risk%20Prioritization%20%26%20Lifecycle-blue)](https://github.com/vulnscope/vulnscope)
+[![Phase](https://img.shields.io/badge/Phase-5%3A%20AI%20Remediation%20%26%20Reports-purple)](https://github.com/vulnscope/vulnscope)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.11%2B-009688)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/Frontend-React%2018%2B%20%7C%20Vite%20%7C%20TypeScript-61dafb)](https://react.dev)
 [![Database](https://img.shields.io/badge/Database-SQLite%20%7C%20SQLAlchemy%202.x-003B57)](https://www.sqlalchemy.org)
@@ -600,7 +600,7 @@ VulnScope compares findings between successive eligible scans of the same reposi
 
 ### 13.5 Database Migrations
 
-Apply the Phase 4 database migration adding `risk_score`, `priority`, and `cvss_score` columns with indexed query support:
+Apply the database migrations including Phase 4 risk scoring and Phase 5 remediation proposals:
 ```powershell
 python -m alembic -c backend/alembic.ini upgrade head
 ```
@@ -608,14 +608,113 @@ python -m alembic -c backend/alembic.ini upgrade head
 Verify migration status:
 ```powershell
 python -m alembic -c backend/alembic.ini current
-# Expected: d4e5f6a7b8c9 (head)
+# Expected: e5f6a7b8c9d0 (head)
 ```
 
 ---
 
-## 14. Verification and Automated Testing
+## 14. Phase 5 — AI-Assisted Remediation, Safe Fix Previews, and Reports
 
-Run the complete backend test suite (107 automated tests across all phases):
+Phase 5 introduces security-conscious, AI-assisted explanations, proposed unified diff fix patches, explicit human review workflows, and publication-ready multi-format security audit reports (PDF, HTML, JSON).
+
+### 14.1 Architectural Principles & Safeguards
+
+```text
+[Deterministic Security Engine (Phases 1-4)]
+        │ (Authoritative Findings, Risk Scores, Severities)
+        ▼
+[Context Sanitizer & Redaction Layer]
+        ├─ Defense-in-depth Secret Redaction (AWS, GitHub, Slack, Private Keys)
+        ├─ Sensitive File Exclusion (.env, .pem, id_rsa, credentials)
+        └─ Bounded Snippet Sizing (20 lines / 4 KB max)
+        │
+        ▼
+[AI Provider Abstraction Layer] (backend/app/services/ai/)
+        ├─ "disabled" (Zero external calls)
+        ├─ "ollama"   (Local loopback only: 127.0.0.1 / localhost)
+        └─ "openai"   (HTTPS only; server-side credentials; SSRF protected)
+        │
+        ▼ (Structured JSON validation via Pydantic)
+[Candidate Remediation Proposal]
+        │
+        ├─ [Structured Explanation] (Root cause, impact, steps, secure pattern, caveats)
+        │
+        └─ [Safe Fix Proposal] (Unified Diff for single-file code findings)
+                 │
+                 ▼ [Patch Validator Engine]
+                 ├─ Path traversal & absolute path rejection
+                 ├─ Manifest/lockfile edit rejection
+                 ├─ Bounded lines (<= 100) & patch size (<= 30 KB)
+                 └─ Unified diff syntax verification
+                 │
+                 ▼ [Lifecycle & Human In The Loop]
+                 ├─ States: proposed -> reviewed -> downloaded -> verification_pending
+                 ├─ Downloadable .patch file for manual developer application
+                 └─ Rescan Verification: ONLY an eligible rescan can confirm "verified_by_rescan"
+```
+
+### 14.2 AI Provider Configuration & Privacy
+
+VulnScope supports modular AI providers configured entirely through environment variables. Server credentials and base URLs are never accepted from clients.
+
+| Setting | Default | Description |
+| :--- | :--- | :--- |
+| `AI_PROVIDER` | `"disabled"` | Active provider: `"disabled"`, `"ollama"`, or `"openai"`. |
+| `AI_BASE_URL` | `"http://localhost:11434"` | Base endpoint. Must be loopback (`127.0.0.1`) for Ollama; must use `https://` for OpenAI. |
+| `AI_MODEL` | `"llama3"` | Model identifier (e.g. `llama3`, `codellama`, `gpt-4o-mini`). |
+| `AI_API_KEY` | `""` | Secret API key for remote providers. Never committed, logged, or exposed in API. |
+| `AI_TIMEOUT_SECONDS` | `30.0` | Timeout threshold in seconds. |
+| `AI_MAX_OUTPUT_TOKENS` | `2000` | Maximum token limit per response. |
+| `AI_MAX_RETRIES` | `1` | Bounded retries for schema validation recovery. |
+| `AI_REMOTE_OPT_IN_REQUIRED`| `true` | Enforces explicit user consent before sending finding context to remote providers. |
+| `AI_MAX_SNIPPET_LINES` | `20` | Maximum lines extracted around a finding (before + after). |
+| `AI_MAX_SNIPPET_BYTES` | `4096` | Maximum byte limit for source code snippet. |
+
+#### Privacy & Prompt-Injection Controls
+1. **Never Dispatches Raw Secrets**: Gitleaks secret values and synthetic secret patterns are stripped before any AI prompt is constructed.
+2. **Excludes Sensitive Files**: Configuration files (`.env*`, `wp-config.php`), private keys (`.pem`, `.key`, `id_rsa`), and keystores are completely blocked from snippet extraction.
+3. **Prompt Injection Containment**: All analyzed repository content and scanner messages are isolated inside `--- UNTRUSTED FINDING DATA ---`. Trusted system instructions explicitly command the model that instructions in code are data to analyze, not instructions to execute.
+4. **Non-destructive & Isolated**: The model has no shell access, no repository write access, and no tool execution capability. Proposed patches are never applied automatically to workspace files.
+5. **Deterministic Fallback**: If AI is disabled, unconfigured, or encounters network errors/rate limits, the application transparently falls back to deterministic Phase 4 guidance without fabricating data.
+
+### 14.3 Proposal Lifecycle & Verification States
+
+VulnScope strictly enforces that an AI suggestion is an **unverified proposal** until proven otherwise by a subsequent scan:
+
+- **`proposed`**: Initial candidate explanation or patch generated.
+- **`reviewed`**: Human developer explicitly reviewed the proposal.
+- **`rejected`**: Proposal rejected by the developer.
+- **`downloaded`**: Sanitized `.patch` file downloaded for local developer testing.
+- **`validation_failed`**: Proposed diff failed structural or path safety checks.
+- **`verification_pending`**: User indicates patch was applied externally and awaits rescan.
+- **`verified_by_rescan`**: An eligible, successful rescan of the same repository lineage confirms the finding is no longer detected.
+- **`unconfirmed`**: Rescan was partial, failed, or the relevant scanner did not run.
+
+### 14.4 Professional Security Audit Reports
+
+VulnScope provides publication-ready security audit reports in three formats:
+
+1. **PDF (`/api/scans/{id}/report?format=pdf`)**: Built with ReportLab, featuring dynamic `Page X of Y` headers/footers (`NumberedCanvas`), executive risk distribution tables, scanner execution outcome metrics, detailed findings catalog, and audit coverage limitations.
+2. **HTML (`/api/scans/{id}/report?format=html`)**: Fully self-contained, standalone printable HTML report with strict `html.escape` protection against XSS payloads and defense-in-depth secret redaction.
+3. **JSON (`/api/scans/{id}/report?format=json`)**: Comprehensive machine-readable audit report conforming to a stable, documented JSON schema.
+
+### 14.5 Phase 5 API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/scans/{id}/findings/{finding_id}/ai-remediation` | Generate or retrieve AI-assisted explanation and remediation proposal (supports `allow_remote` opt-in). |
+| `GET` | `/api/scans/{id}/findings/{finding_id}/ai-remediation` | Retrieve existing AI remediation proposal for finding. |
+| `POST` | `/api/scans/{id}/findings/{finding_id}/fix-proposals` | Generate candidate unified diff fix patch (prohibited for secrets/dependencies). |
+| `GET` | `/api/scans/{id}/findings/{finding_id}/fix-proposals` | List all fix proposals for finding. |
+| `PATCH`| `/api/scans/{id}/fix-proposals/{proposal_id}/status` | Update proposal lifecycle state (`reviewed`, `rejected`, `verification_pending`). |
+| `GET` | `/api/scans/{id}/fix-proposals/{proposal_id}/download` | Download sanitized `.patch` file (`Content-Disposition: attachment`). |
+| `GET` | `/api/scans/{id}/report?format=pdf\|html\|json` | Export security audit report in PDF, HTML, or JSON format. |
+
+---
+
+## 15. Verification and Automated Testing
+
+Run the complete backend test suite (135 automated tests covering Phases 1–5):
 ```powershell
 cd d:\Projects\VulnScope
 python -m pytest backend/tests -v

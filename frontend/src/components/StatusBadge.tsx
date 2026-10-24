@@ -324,3 +324,77 @@ export const LifecycleBadge: React.FC<LifecycleBadgeProps> = ({ status }) => {
       );
   }
 };
+
+interface ProposalStatusBadgeProps {
+  status?: string | null;
+}
+
+export const ProposalStatusBadge: React.FC<ProposalStatusBadgeProps> = ({ status }) => {
+  if (!status) return null;
+  const normalized = status.toLowerCase();
+
+  switch (normalized) {
+    case 'proposed':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-950/70 text-amber-300 border border-amber-800/60">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          Proposed Fix
+        </span>
+      );
+    case 'reviewed':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-950/80 text-blue-300 border border-blue-800/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+          Reviewed
+        </span>
+      );
+    case 'rejected':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+          Rejected
+        </span>
+      );
+    case 'downloaded':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-cyan-950/80 text-cyan-300 border border-cyan-800/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          Downloaded
+        </span>
+      );
+    case 'validation_failed':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-rose-950/80 text-rose-300 border border-rose-800/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+          Validation Failed
+        </span>
+      );
+    case 'verification_pending':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-purple-950/80 text-purple-300 border border-purple-800/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+          Pending Rescan
+        </span>
+      );
+    case 'verified_by_rescan':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800/70">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          Verified by Rescan
+        </span>
+      );
+    case 'unconfirmed':
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-900 text-slate-400 border border-slate-800">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+          Unconfirmed
+        </span>
+      );
+    default:
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-900 text-slate-400 border border-slate-800">
+          {status}
+        </span>
+      );
+  }
+};

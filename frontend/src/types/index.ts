@@ -76,9 +76,47 @@ export interface RemediationGuidance {
   package_ecosystem?: string | null;
 }
 
+export type ProposalStatus =
+  | 'proposed'
+  | 'reviewed'
+  | 'rejected'
+  | 'downloaded'
+  | 'validation_failed'
+  | 'verification_pending'
+  | 'verified_by_rescan'
+  | 'unconfirmed';
+
+export interface RemediationProposal {
+  id: string;
+  scan_id: string;
+  finding_id: string;
+  finding_fingerprint?: string | null;
+  status: ProposalStatus | string;
+  provider: string;
+  model_name: string;
+  explanation: string;
+  likely_root_cause: string;
+  potential_impact: string;
+  remediation_steps: string[];
+  secure_coding_pattern?: string | null;
+  testing_recommendations: string[];
+  caveats_and_assumptions: string[];
+  patch_appropriate: boolean;
+  target_file_path?: string | null;
+  change_summary?: string | null;
+  diff_content?: string | null;
+  validation_error?: string | null;
+  user_notes?: string | null;
+  is_ai_generated: boolean;
+  disclaimer: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FindingDetail extends Finding {
   risk_explanation?: RiskExplanation | null;
   remediation?: RemediationGuidance | null;
+  ai_proposal?: RemediationProposal | null;
 }
 
 export interface FindingChangeDetail {

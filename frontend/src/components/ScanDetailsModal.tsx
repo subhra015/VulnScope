@@ -21,6 +21,11 @@ import {
   ChevronUp,
   ShieldCheck,
   ArrowRight,
+  Download,
+  Sparkles,
+  FileText,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import { api, ApiError } from '../services/api';
 import {
@@ -38,6 +43,7 @@ import {
   CategoryBadge,
   PriorityBadge,
   LifecycleBadge,
+  ProposalStatusBadge,
 } from './StatusBadge';
 
 interface ScanDetailsModalProps {
@@ -85,6 +91,14 @@ export const ScanDetailsModal: React.FC<ScanDetailsModalProps> = ({
   const [isLoadingComparison, setIsLoadingComparison] = useState(false);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
   const [comparisonStatusFilter, setComparisonStatusFilter] = useState<string>('all');
+
+  // Phase 5: AI Remediation and Report Export State
+  const [allowRemoteProcessing, setAllowRemoteProcessing] = useState<boolean>(false);
+  const [generatingAiId, setGeneratingAiId] = useState<string | null>(null);
+  const [generatingPatchId, setGeneratingPatchId] = useState<string | null>(null);
+  const [aiErrors, setAiErrors] = useState<Record<string, string>>({});
+  const [exportingReport, setExportingReport] = useState<'pdf' | 'html' | 'json' | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -280,6 +294,119 @@ export const ScanDetailsModal: React.FC<ScanDetailsModalProps> = ({
     }
   };
 
+  const handleGenerateAi = async (findingId: string) => {
+    if (!scanId) return;
+    setGeneratingAiId(findingId);
+    setAiErrors((prev) => ({ ...prev, [findingId]: '' }));
+    try {
+      const proposal = await api.generateAIRemediation(scanId, findingId, allowRemoteProcessing);
+      setFindingDetails((prev) => {
+        const existing = prev[findingId];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [findingId]: {
+            ...existing,
+            ai_proposal: proposal,
+          },
+        };
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'AI remediation generation failed.';
+      setAiErrors((prev) => ({ ...prev, [findingId]: msg }));
+    } finally {
+      setGeneratingAiId(null);
+    }
+  };
+
+  const handleGenerateFix = async (findingId: string) => {
+    if (!scanId) return;
+    setGeneratingPatchId(findingId);
+    setAiErrors((prev) => ({ ...prev, [findingId]: '' }));
+    try {
+      const proposal = await api.generateFixProposal(scanId, findingId, allowRemoteProcessing);
+      setFindingDetails((prev) => {
+        const existing = prev[findingId];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [findingId]: {
+            ...existing,
+            ai_proposal: proposal,
+          },
+        };
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Fix patch generation failed.';
+      setAiErrors((prev) => ({ ...prev, [findingId]: msg }));
+    } finally {
+      setGeneratingPatchId(null);
+    }
+  };
+
+  const handleUpdateProposalStatus = async (
+    findingId: string,
+    proposalId: string,
+    newStatus: string
+  ) => {
+    if (!scanId) return;
+    try {
+      const updated = await api.updateProposalStatus(scanId, proposalId, newStatus);
+      setFindingDetails((prev) => {
+        const existing = prev[findingId];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [findingId]: {
+            ...existing,
+            ai_proposal: updated,
+          },
+        };
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to update proposal status.';
+      setAiErrors((prev) => ({ ...prev, [findingId]: msg }));
+    }
+  };
+
+  const handleDownloadPatch = async (findingId: string, proposalId: string) => {
+    if (!scanId) return;
+    try {
+      await api.downloadPatch(scanId, proposalId);
+      setFindingDetails((prev) => {
+        const existing = prev[findingId];
+        if (!existing || !existing.ai_proposal) return prev;
+        return {
+          ...prev,
+          [findingId]: {
+            ...existing,
+            ai_proposal: {
+              ...existing.ai_proposal,
+              status: 'downloaded',
+            },
+          },
+        };
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to download patch.';
+      setAiErrors((prev) => ({ ...prev, [findingId]: msg }));
+    }
+  };
+
+  const handleExportReport = async (format: 'pdf' | 'html' | 'json') => {
+    if (!scanId) return;
+    setExportingReport(format);
+    setExportError(null);
+    try {
+      await api.downloadReport(scanId, format);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : `Failed to export ${format.toUpperCase()} report.`;
+      setExportError(msg);
+    } finally {
+      setExportingReport(null);
+    }
+  };
+
   const formatDate = (isoString?: string | null) => {
     if (!isoString) return 'Not recorded';
     try {
@@ -357,6 +484,55 @@ export const ScanDetailsModal: React.FC<ScanDetailsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Phase 5: Security Report Exports */}
+            {scan && scan.status !== 'created' && (
+              <div className="flex items-center gap-1.5 mr-2">
+                <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">Export:</span>
+                <button
+                  type="button"
+                  onClick={() => handleExportReport('pdf')}
+                  disabled={!!exportingReport}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium border border-slate-700 transition-colors disabled:opacity-50"
+                  title="Export security audit report as PDF"
+                >
+                  {exportingReport === 'pdf' ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
+                  ) : (
+                    <Download className="w-3 h-3 text-rose-400" />
+                  )}
+                  <span>PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportReport('html')}
+                  disabled={!!exportingReport}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium border border-slate-700 transition-colors disabled:opacity-50"
+                  title="Export interactive HTML report"
+                >
+                  {exportingReport === 'html' ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
+                  ) : (
+                    <Download className="w-3 h-3 text-cyan-400" />
+                  )}
+                  <span>HTML</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportReport('json')}
+                  disabled={!!exportingReport}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-medium border border-slate-700 transition-colors disabled:opacity-50"
+                  title="Export machine-readable JSON report"
+                >
+                  {exportingReport === 'json' ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
+                  ) : (
+                    <Download className="w-3 h-3 text-amber-400" />
+                  )}
+                  <span>JSON</span>
+                </button>
+              </div>
+            )}
+
             {canRunScan && (
               <button
                 type="button"
@@ -458,6 +634,22 @@ export const ScanDetailsModal: React.FC<ScanDetailsModalProps> = ({
                 <p className="font-semibold">Operation failed</p>
                 <p className="mt-0.5">{error}</p>
               </div>
+            </div>
+          )}
+
+          {exportError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-800 text-rose-300 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{exportError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExportError(null)}
+                className="text-xs text-rose-400 underline hover:text-rose-300"
+              >
+                Dismiss
+              </button>
             </div>
           )}
 
@@ -845,7 +1037,331 @@ export const ScanDetailsModal: React.FC<ScanDetailsModalProps> = ({
                                       )}
                                     </div>
 
-                                    {/* 3. Description & Coordinates */}
+                                    {/* 3. Phase 5: AI-Assisted Remediation & Safe Fix Proposal */}
+                                    <div className="p-3.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-3">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <Sparkles className="w-4 h-4 text-purple-400" />
+                                          <h6 className="font-semibold text-slate-200 text-xs">AI-Assisted Remediation & Fix Proposals</h6>
+                                        </div>
+                                        {detail?.ai_proposal && (
+                                          <div className="flex items-center gap-2">
+                                            <ProposalStatusBadge status={detail.ai_proposal.status} />
+                                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800">
+                                              {detail.ai_proposal.provider}/{detail.ai_proposal.model_name}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Error notification if AI failed */}
+                                      {aiErrors[finding.id] && (
+                                        <div className="p-2.5 rounded bg-rose-950/40 border border-rose-800/60 text-rose-300 text-[11px] flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-1.5">
+                                            <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                            <span>{aiErrors[finding.id]}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleGenerateAi(finding.id)}
+                                            className="text-[10px] text-rose-400 underline hover:text-rose-300 shrink-0"
+                                          >
+                                            Retry
+                                          </button>
+                                        </div>
+                                      )}
+
+                                      {/* Case A: No Proposal Yet */}
+                                      {!detail?.ai_proposal && (
+                                        <div className="space-y-3 pt-1">
+                                          <p className="text-[11px] text-slate-400 leading-relaxed">
+                                            Generate contextual AI remediation assistance grounded in verified scanner findings,
+                                            and preview reviewable unified diff patches for code vulnerabilities.
+                                          </p>
+
+                                          {/* Remote Opt-In Checkbox */}
+                                          <label className="flex items-start gap-2 cursor-pointer select-none">
+                                            <input
+                                              type="checkbox"
+                                              checked={allowRemoteProcessing}
+                                              onChange={(e) => setAllowRemoteProcessing(e.target.checked)}
+                                              className="mt-0.5 rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-0 focus:ring-offset-0"
+                                            />
+                                            <span className="text-[10px] text-slate-400 leading-snug">
+                                              Allow remote processing if an external OpenAI-compatible provider is configured.
+                                              (Unchecked requests remain strictly local via Ollama or use deterministic guidance).
+                                            </span>
+                                          </label>
+
+                                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleGenerateAi(finding.id)}
+                                              disabled={generatingAiId === finding.id}
+                                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs transition-colors disabled:opacity-50 shadow-sm"
+                                            >
+                                              {generatingAiId === finding.id ? (
+                                                <>
+                                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                                  <span>Analyzing Finding...</span>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <Sparkles className="w-3 h-3" />
+                                                  <span>Explain with AI</span>
+                                                </>
+                                              )}
+                                            </button>
+
+                                            {finding.category === 'code' && finding.file_path && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleGenerateFix(finding.id)}
+                                                disabled={generatingPatchId === finding.id}
+                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs border border-slate-700 transition-colors disabled:opacity-50"
+                                              >
+                                                {generatingPatchId === finding.id ? (
+                                                  <>
+                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                    <span>Generating Diff...</span>
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <FileText className="w-3 h-3 text-cyan-400" />
+                                                    <span>Generate Safe Fix Patch</span>
+                                                  </>
+                                                )}
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Case B: Proposal Exists */}
+                                      {detail?.ai_proposal && (
+                                        <div className="space-y-3 pt-1">
+                                          {/* Explanation & Impact */}
+                                          <div className="space-y-1.5">
+                                            <span className="text-purple-300 font-medium text-[11px] block">
+                                              {detail.ai_proposal.explanation}
+                                            </span>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
+                                              <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                                                <strong className="text-slate-400 block mb-0.5">Root Cause:</strong>
+                                                <span className="text-slate-300">{detail.ai_proposal.likely_root_cause}</span>
+                                              </div>
+                                              <div className="p-2 rounded bg-slate-950 border border-slate-800">
+                                                <strong className="text-slate-400 block mb-0.5">Potential Impact:</strong>
+                                                <span className="text-slate-300">{detail.ai_proposal.potential_impact}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          {/* AI Remediation Steps */}
+                                          {detail.ai_proposal.remediation_steps && detail.ai_proposal.remediation_steps.length > 0 && (
+                                            <div className="space-y-1">
+                                              <span className="text-slate-400 font-medium text-[11px] block">AI Remediation Plan:</span>
+                                              <ol className="list-decimal list-inside space-y-1 text-slate-300 text-[11px] pl-1">
+                                                {detail.ai_proposal.remediation_steps.map((step, sIdx) => (
+                                                  <li key={sIdx}>{step}</li>
+                                                ))}
+                                              </ol>
+                                            </div>
+                                          )}
+
+                                          {/* Secure Pattern */}
+                                          {detail.ai_proposal.secure_coding_pattern && (
+                                            <div className="space-y-1">
+                                              <span className="text-emerald-400 font-medium text-[10px] block">Recommended Secure Pattern:</span>
+                                              <pre className="p-2 rounded bg-slate-950 border border-slate-800 text-[10px] font-mono text-emerald-300 overflow-x-auto whitespace-pre-wrap">
+                                                {detail.ai_proposal.secure_coding_pattern}
+                                              </pre>
+                                            </div>
+                                          )}
+
+                                          {/* Testing recommendations & Caveats */}
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
+                                            {detail.ai_proposal.testing_recommendations && detail.ai_proposal.testing_recommendations.length > 0 && (
+                                              <div className="p-2 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                                                <strong className="text-slate-400 block">Testing Recommendations:</strong>
+                                                <ul className="list-disc list-inside text-slate-300 space-y-0.5">
+                                                  {detail.ai_proposal.testing_recommendations.map((t, idx) => (
+                                                    <li key={idx}>{t}</li>
+                                                  ))}
+                                                </ul>
+                                              </div>
+                                            )}
+                                            {detail.ai_proposal.caveats_and_assumptions && detail.ai_proposal.caveats_and_assumptions.length > 0 && (
+                                              <div className="p-2 rounded bg-slate-950 border border-slate-800 space-y-0.5">
+                                                <strong className="text-amber-400/90 block">Assumptions & Caveats:</strong>
+                                                <ul className="list-disc list-inside text-slate-400 space-y-0.5">
+                                                  {detail.ai_proposal.caveats_and_assumptions.map((c, idx) => (
+                                                    <li key={idx}>{c}</li>
+                                                  ))}
+                                                </ul>
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          {/* Proposed Unified Diff Preview */}
+                                          {detail.ai_proposal.diff_content ? (
+                                            <div className="space-y-2 pt-2 border-t border-slate-800">
+                                              <div className="flex items-center justify-between">
+                                                <div>
+                                                  <span className="text-xs font-semibold text-slate-200">Proposed Fix Diff</span>
+                                                  {detail.ai_proposal.target_file_path && (
+                                                    <code className="text-[10px] text-cyan-400 ml-2 font-mono">
+                                                      {detail.ai_proposal.target_file_path}
+                                                    </code>
+                                                  )}
+                                                </div>
+                                                <span className="text-[10px] text-slate-500 font-mono">Unified Diff</span>
+                                              </div>
+
+                                              {detail.ai_proposal.change_summary && (
+                                                <p className="text-[11px] text-slate-400 italic">
+                                                  {detail.ai_proposal.change_summary}
+                                                </p>
+                                              )}
+
+                                              {/* Validation Failed Alert */}
+                                              {detail.ai_proposal.status === 'validation_failed' && (
+                                                <div className="p-2 rounded bg-rose-950/40 border border-rose-800 text-rose-300 text-[10px]">
+                                                  <strong>Patch Validation Failed:</strong> {detail.ai_proposal.validation_error}
+                                                </div>
+                                              )}
+
+                                              {/* Syntax-highlighted Diff Box */}
+                                              <div className="rounded border border-slate-800 bg-slate-950 font-mono text-[10px] overflow-x-auto max-h-56 p-2 space-y-0.5 select-text">
+                                                {detail.ai_proposal.diff_content.split('\n').map((line, lIdx) => {
+                                                  let lineStyle = 'text-slate-400';
+                                                  let bgStyle = '';
+                                                  if (line.startsWith('+') && !line.startsWith('+++')) {
+                                                    lineStyle = 'text-emerald-400 font-semibold';
+                                                    bgStyle = 'bg-emerald-950/40';
+                                                  } else if (line.startsWith('-') && !line.startsWith('---')) {
+                                                    lineStyle = 'text-rose-400 font-semibold';
+                                                    bgStyle = 'bg-rose-950/40';
+                                                  } else if (line.startsWith('@@')) {
+                                                    lineStyle = 'text-cyan-400 font-bold';
+                                                    bgStyle = 'bg-cyan-950/20';
+                                                  } else if (line.startsWith('---') || line.startsWith('+++')) {
+                                                    lineStyle = 'text-slate-200 font-bold';
+                                                  }
+                                                  return (
+                                                    <div
+                                                      key={lIdx}
+                                                      className={`${lineStyle} ${bgStyle} px-1.5 py-0.5 rounded-sm whitespace-pre`}
+                                                    >
+                                                      {line}
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+
+                                              {/* Patch Review and Download Controls */}
+                                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                                {detail.ai_proposal.status !== 'validation_failed' && (
+                                                  <>
+                                                    {detail.ai_proposal.status !== 'reviewed' && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          handleUpdateProposalStatus(finding.id, detail.ai_proposal!.id, 'reviewed')
+                                                        }
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-900/60 hover:bg-blue-800 text-blue-200 text-xs border border-blue-700/60 transition-colors"
+                                                      >
+                                                        <ThumbsUp className="w-3 h-3 text-blue-300" />
+                                                        <span>Mark Reviewed</span>
+                                                      </button>
+                                                    )}
+
+                                                    {detail.ai_proposal.status !== 'rejected' && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          handleUpdateProposalStatus(finding.id, detail.ai_proposal!.id, 'rejected')
+                                                        }
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700 transition-colors"
+                                                      >
+                                                        <ThumbsDown className="w-3 h-3 text-slate-400" />
+                                                        <span>Reject</span>
+                                                      </button>
+                                                    )}
+
+                                                    {(detail.ai_proposal.status === 'reviewed' || detail.ai_proposal.status === 'downloaded') && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          handleUpdateProposalStatus(
+                                                            finding.id,
+                                                            detail.ai_proposal!.id,
+                                                            'verification_pending'
+                                                          )
+                                                        }
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-purple-900/60 hover:bg-purple-800 text-purple-200 text-xs border border-purple-700/60 transition-colors"
+                                                        title="Mark applied externally awaiting rescan verification"
+                                                      >
+                                                        <Clock className="w-3 h-3 text-purple-300" />
+                                                        <span>Mark Pending Rescan</span>
+                                                      </button>
+                                                    )}
+
+                                                    <button
+                                                      type="button"
+                                                      onClick={() =>
+                                                        handleDownloadPatch(finding.id, detail.ai_proposal!.id)
+                                                      }
+                                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-medium text-xs transition-colors shadow-sm ml-auto"
+                                                      title="Download sanitized patch file for manual application"
+                                                    >
+                                                      <Download className="w-3 h-3" />
+                                                      <span>Download Patch (.patch)</span>
+                                                    </button>
+                                                  </>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            /* Offer fix generation if patch appropriate but not generated yet */
+                                            detail.ai_proposal.patch_appropriate &&
+                                            finding.category === 'code' &&
+                                            finding.file_path && (
+                                              <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                                                <span className="text-[11px] text-slate-400">
+                                                  A source code change is appropriate for this finding.
+                                                </span>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleGenerateFix(finding.id)}
+                                                  disabled={generatingPatchId === finding.id}
+                                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-cyan-900/60 hover:bg-cyan-800 text-cyan-200 text-xs border border-cyan-700/60 transition-colors disabled:opacity-50"
+                                                >
+                                                  {generatingPatchId === finding.id ? (
+                                                    <>
+                                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                                      <span>Generating Patch...</span>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <FileText className="w-3 h-3" />
+                                                      <span>Generate Fix Patch</span>
+                                                    </>
+                                                  )}
+                                                </button>
+                                              </div>
+                                            )
+                                          )}
+
+                                          {/* AI Proposal Disclaimer */}
+                                          <p className="text-[10px] text-slate-500 italic pt-1 border-t border-slate-800/60">
+                                            {detail.ai_proposal.disclaimer}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* 4. Description & Coordinates */}
                                     <div className="space-y-2 text-[11px]">
                                       <div>
                                         <span className="text-slate-400 font-mono block text-[10px] mb-0.5">

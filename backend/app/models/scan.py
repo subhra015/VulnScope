@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.repository import Repository
     from app.models.finding import Finding
     from app.models.scanner_run import ScannerRun
+    from app.models.remediation_proposal import RemediationProposal
 
 
 class Scan(Base):
@@ -100,6 +101,11 @@ class Scan(Base):
         back_populates="scan",
         cascade="all, delete-orphan",
         order_by="ScannerRun.scanner_name",
+    )
+    remediation_proposals: Mapped[List["RemediationProposal"]] = relationship(
+        "RemediationProposal",
+        back_populates="scan",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:

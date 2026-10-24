@@ -3,8 +3,11 @@ Pydantic schemas for findings, risk explanations, and remediation guidance.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from app.services.ai.schemas import RemediationProposalResponse
 
 
 class ScoringFactorSchema(BaseModel):
@@ -70,6 +73,7 @@ class FindingResponse(BaseModel):
 class FindingDetailResponse(FindingResponse):
     risk_explanation: Optional[RiskExplanationSchema] = Field(default=None, description="Detailed score explanation")
     remediation: Optional[RemediationGuidanceSchema] = Field(default=None, description="Structured remediation guidance")
+    ai_proposal: Optional[Any] = Field(default=None, description="AI-assisted remediation proposal if generated")
 
 
 class FindingsListResponse(BaseModel):

@@ -5,7 +5,7 @@ In Phase 1, no scanner results are generated.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -13,6 +13,7 @@ from app.models.base import Base, UTCDateTime, generate_uuid, utc_now
 
 if TYPE_CHECKING:
     from app.models.scan import Scan
+    from app.models.remediation_proposal import RemediationProposal
 
 
 class Finding(Base):
@@ -132,6 +133,11 @@ class Finding(Base):
     scan: Mapped["Scan"] = relationship(
         "Scan",
         back_populates="findings",
+    )
+    remediation_proposals: Mapped[List["RemediationProposal"]] = relationship(
+        "RemediationProposal",
+        back_populates="finding",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:

@@ -8,5 +8,6 @@ from app.models.repository import Repository
 from app.models.scan import Scan
 from app.models.finding import Finding
 from app.models.scanner_run import ScannerRun
+from app.models.remediation_proposal import RemediationProposal
 
-__all__ = ["Base", "Repository", "Scan", "Finding", "ScannerRun", "generate_uuid", "utc_now"]
+__all__ = ["Base", "Repository", "Scan", "Finding", "ScannerRun", "RemediationProposal", "generate_uuid", "utc_now"]
