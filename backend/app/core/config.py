@@ -83,6 +83,28 @@ class Settings(BaseSettings):
     # Semgrep rules configuration (e.g. "p/default", "p/ci", "auto")
     semgrep_rules_config: str = "p/default"
 
+    # --- Phase 5: AI-Assisted Remediation & Safe Fix Previews ---
+    # Provider: "disabled", "ollama", "openai"
+    ai_provider: str = Field(default="disabled")
+    # Base URL for AI provider (e.g., "http://localhost:11434" for ollama or "https://api.openai.com/v1" for openai)
+    ai_base_url: Optional[str] = None
+    # Model name (e.g., "llama3", "codellama", "gpt-4o-mini")
+    ai_model: str = Field(default="default")
+    # API key for remote providers (strictly secret, never logged or exposed in API)
+    ai_api_key: Optional[str] = None
+    # Request timeout in seconds
+    ai_timeout_seconds: float = 30.0
+    # Maximum output token limit for AI response
+    ai_max_output_tokens: int = 2000
+    # Maximum bounded retry attempts for malformed responses
+    ai_max_retries: int = 1
+    # Require explicit user-visible opt-in before sending any source snippet to a remote provider
+    ai_remote_opt_in_required: bool = True
+    # Maximum lines around finding to include in source snippet (before + after)
+    ai_max_snippet_lines: int = 20
+    # Maximum bytes for source code snippet
+    ai_max_snippet_bytes: int = 4096
+
     model_config = SettingsConfigDict(
         env_file=str(BACKEND_DIR / ".env"),
         env_file_encoding="utf-8",
@@ -174,6 +196,52 @@ class Settings(BaseSettings):
                 return str(cand)
 
         return None
+
+    def is_ai_enabled(self) -> bool:
+        """Check if an active AI provider is configured."""
+        return self.ai_provider.strip().lower() in ("ollama", "openai")
+
+    def is_ai_remote(self) -> bool:
+        """Check if current AI provider is an external/remote service."""
+        return self.ai_provider.strip().lower() == "openai"
+
+    def get_validated_ai_endpoint(self) -> str:
+        """
+        Validates AI provider configuration and returns a safe base URL.
+        Enforces HTTPS for remote providers and restricts local providers to localhost/127.0.0.1.
+        Raises ValueError if configuration is invalid or presents SSRF risk.
+        """
+        from urllib.parse import urlparse
+
+        provider = self.ai_provider.strip().lower()
+        if provider == "disabled":
+            return ""
+
+        if provider == "ollama":
+            url = self.ai_base_url or "http://localhost:11434"
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https"):
+                raise ValueError("Ollama base URL must use http or https scheme.")
+            hostname = (parsed.hostname or "").lower()
+            if hostname not in ("localhost", "127.0.0.1", "::1"):
+                raise ValueError(
+                    f"Local Ollama provider is restricted to loopback interfaces (localhost, 127.0.0.1). "
+                    f"Invalid host: '{hostname}'"
+                )
+            return url.rstrip("/")
+
+        if provider == "openai":
+            url = self.ai_base_url or "https://api.openai.com/v1"
+            parsed = urlparse(url)
+            if parsed.scheme != "https":
+                raise ValueError("Remote OpenAI provider base URL must use HTTPS scheme.")
+            hostname = (parsed.hostname or "").lower()
+            # Block internal metadata endpoints and link-local addresses
+            if hostname in ("169.254.169.254", "metadata.google.internal", "instance-data"):
+                raise ValueError("Access to cloud instance metadata services is forbidden.")
+            return url.rstrip("/")
+
+        raise ValueError(f"Unsupported AI provider '{self.ai_provider}'. Must be 'disabled', 'ollama', or 'openai'.")
 
 
 # Shared singleton instance

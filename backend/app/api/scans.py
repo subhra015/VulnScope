@@ -5,13 +5,16 @@ normalized findings querying with risk prioritization, remediation guidance,
 and finding lifecycle comparison.
 """
 
+import json
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.base import utc_now
 from app.models.finding import Finding
+from app.models.remediation_proposal import RemediationProposal
 from app.models.repository import Repository
 from app.models.scan import Scan
 from app.models.scanner_run import ScannerRun
@@ -31,11 +34,19 @@ from app.schemas.scan import (
     ScanResponse,
     ScanRunResponse,
 )
+from app.services.ai.remediation_ai_service import AIRemediationService
+from app.services.ai.schemas import (
+    AIPatchRequest,
+    AIRemediationRequest,
+    RemediationProposalResponse,
+    UpdateProposalStatusRequest,
+)
 from app.services.lifecycle_service import (
     LifecycleService,
     ScanComparabilityError,
 )
 from app.services.remediation_service import RemediationService
+from app.services.report_service import ReportService
 from app.services.risk_scorer import RiskScorer
 from app.services.scan_orchestrator import ScanOrchestratorError, scan_orchestrator
 
@@ -384,6 +395,18 @@ def get_scan_finding_detail(
     response.risk_explanation = risk_schema
     response.remediation = rem_schema
     response.lifecycle_status = lifecycle_status
+
+    # Check for existing AI proposal
+    proposal = db.scalars(
+        select(RemediationProposal).where(
+            RemediationProposal.scan_id == scan_id,
+            RemediationProposal.finding_id == finding_id,
+        )
+    ).first()
+    if proposal:
+        AIRemediationService.check_rescan_verification(db, proposal)
+        response.ai_proposal = RemediationProposalResponse.model_validate(proposal)
+
     return response
 
 
@@ -508,3 +531,317 @@ def compare_scans(
         ) from exc
 
     return ScanComparisonResponse.model_validate(result.to_dict())
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: AI-Assisted Remediation, Safe Fix Previews, and Reports
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{scan_id}/findings/{finding_id}/ai-remediation",
+    response_model=RemediationProposalResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate or retrieve AI-assisted explanation and remediation proposal",
+)
+async def generate_ai_remediation(
+    scan_id: str,
+    finding_id: str,
+    payload: AIRemediationRequest = AIRemediationRequest(),
+    db: Session = Depends(get_db),
+) -> RemediationProposalResponse:
+    """
+    Generate structured, AI-assisted explanation and remediation guidance for a specific finding.
+    If an AI provider is unavailable, automatically falls back to verified Phase 4 deterministic guidance.
+    Enforces remote processing opt-in when configured with an external provider.
+    """
+    scan = db.scalars(select(Scan).where(Scan.id == scan_id)).first()
+    if not scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scan record with ID '{scan_id}' not found",
+        )
+
+    finding = db.scalars(select(Finding).where(Finding.id == finding_id)).first()
+    if not finding or finding.scan_id != scan_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Finding with ID '{finding_id}' not found in scan '{scan_id}'",
+        )
+
+    proposal = await AIRemediationService.generate_or_get_remediation(
+        db=db,
+        scan=scan,
+        finding=finding,
+        allow_remote=payload.allow_remote,
+    )
+
+    return RemediationProposalResponse.model_validate(proposal)
+
+
+@router.get(
+    "/{scan_id}/findings/{finding_id}/ai-remediation",
+    response_model=RemediationProposalResponse,
+    summary="Get existing AI remediation proposal for finding",
+)
+def get_ai_remediation(
+    scan_id: str,
+    finding_id: str,
+    db: Session = Depends(get_db),
+) -> RemediationProposalResponse:
+    """
+    Retrieve previously generated remediation proposal for a finding.
+    Returns 404 if no proposal has been generated yet.
+    """
+    scan = db.scalars(select(Scan).where(Scan.id == scan_id)).first()
+    if not scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scan record with ID '{scan_id}' not found",
+        )
+
+    finding = db.scalars(select(Finding).where(Finding.id == finding_id)).first()
+    if not finding or finding.scan_id != scan_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Finding with ID '{finding_id}' not found in scan '{scan_id}'",
+        )
+
+    proposal = db.scalars(
+        select(RemediationProposal).where(
+            RemediationProposal.scan_id == scan_id,
+            RemediationProposal.finding_id == finding_id,
+        )
+    ).first()
+
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No remediation proposal has been generated for finding '{finding_id}'",
+        )
+
+    AIRemediationService.check_rescan_verification(db, proposal)
+    return RemediationProposalResponse.model_validate(proposal)
+
+
+@router.post(
+    "/{scan_id}/findings/{finding_id}/fix-proposals",
+    response_model=RemediationProposalResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate proposed unified diff fix patch",
+)
+async def generate_fix_proposal(
+    scan_id: str,
+    finding_id: str,
+    payload: AIPatchRequest = AIPatchRequest(),
+    db: Session = Depends(get_db),
+) -> RemediationProposalResponse:
+    """
+    Generate a proposed source code patch for an individual finding.
+    The diff is strictly validated for path safety, syntax, and size before persisting.
+    Never modifies original repository files.
+    """
+    scan = db.scalars(select(Scan).where(Scan.id == scan_id)).first()
+    if not scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scan record with ID '{scan_id}' not found",
+        )
+
+    finding = db.scalars(select(Finding).where(Finding.id == finding_id)).first()
+    if not finding or finding.scan_id != scan_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Finding with ID '{finding_id}' not found in scan '{scan_id}'",
+        )
+
+    proposal = await AIRemediationService.generate_fix_proposal(
+        db=db,
+        scan=scan,
+        finding=finding,
+        allow_remote=payload.allow_remote,
+    )
+
+    return RemediationProposalResponse.model_validate(proposal)
+
+
+@router.get(
+    "/{scan_id}/findings/{finding_id}/fix-proposals",
+    response_model=List[RemediationProposalResponse],
+    summary="Get fix proposals for finding",
+)
+def list_fix_proposals(
+    scan_id: str,
+    finding_id: str,
+    db: Session = Depends(get_db),
+) -> List[RemediationProposalResponse]:
+    """List all proposal records for finding."""
+    proposals = db.scalars(
+        select(RemediationProposal)
+        .where(
+            RemediationProposal.scan_id == scan_id,
+            RemediationProposal.finding_id == finding_id,
+        )
+        .order_by(RemediationProposal.created_at.desc())
+    ).all()
+
+    for p in proposals:
+        AIRemediationService.check_rescan_verification(db, p)
+
+    return [RemediationProposalResponse.model_validate(p) for p in proposals]
+
+
+@router.patch(
+    "/{scan_id}/fix-proposals/{proposal_id}/status",
+    response_model=RemediationProposalResponse,
+    summary="Update remediation proposal lifecycle status",
+)
+def update_proposal_status(
+    scan_id: str,
+    proposal_id: str,
+    payload: UpdateProposalStatusRequest,
+    db: Session = Depends(get_db),
+) -> RemediationProposalResponse:
+    """
+    Update the lifecycle status of a proposed remediation (e.g. 'reviewed', 'rejected', 'verification_pending').
+    Enforces valid transition paths and authorization.
+    """
+    proposal = db.scalars(
+        select(RemediationProposal).where(
+            RemediationProposal.id == proposal_id,
+            RemediationProposal.scan_id == scan_id,
+        )
+    ).first()
+
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Proposal with ID '{proposal_id}' not found in scan '{scan_id}'",
+        )
+
+    updated = AIRemediationService.update_proposal_status(
+        db=db,
+        proposal=proposal,
+        new_status=payload.status,
+        user_notes=payload.user_notes,
+    )
+
+    return RemediationProposalResponse.model_validate(updated)
+
+
+@router.get(
+    "/{scan_id}/fix-proposals/{proposal_id}/download",
+    summary="Download sanitized proposed patch file",
+)
+def download_patch(
+    scan_id: str,
+    proposal_id: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """
+    Download the unified diff patch file for manual application.
+    Updates proposal state to 'downloaded'.
+    """
+    proposal = db.scalars(
+        select(RemediationProposal).where(
+            RemediationProposal.id == proposal_id,
+            RemediationProposal.scan_id == scan_id,
+        )
+    ).first()
+
+    if not proposal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Proposal with ID '{proposal_id}' not found in scan '{scan_id}'",
+        )
+
+    if not proposal.diff_content or proposal.status == "validation_failed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot download an invalid or empty patch.",
+        )
+
+    # Transition to downloaded
+    if proposal.status in ("proposed", "reviewed"):
+        proposal.status = "downloaded"
+        proposal.updated_at = utc_now()
+        db.commit()
+
+    filename = f"vulnscope-fix-{proposal_id[:8]}.patch"
+    return Response(
+        content=proposal.diff_content,
+        media_type="text/x-diff",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
+# --- Security Audit Report Routes ---
+
+
+@router.get(
+    "/{scan_id}/report",
+    summary="Export security audit report (format: json, html, pdf)",
+)
+def get_security_report(
+    scan_id: str,
+    format: str = Query("json", description="Report format ('json', 'html', 'pdf')"),
+    db: Session = Depends(get_db),
+) -> Response:
+    """
+    Generate and export a security audit report for a completed or partial scan.
+    Returns publication-ready reports in JSON, standalone HTML, or paginated PDF format.
+    """
+    scan = db.scalars(select(Scan).where(Scan.id == scan_id)).first()
+    if not scan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scan record with ID '{scan_id}' not found",
+        )
+
+    clean_fmt = format.strip().lower()
+
+    if clean_fmt == "json":
+        report_data = ReportService.generate_json_report(scan, db)
+        return Response(
+            content=json.dumps(report_data, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="vulnscope-report-{scan_id[:8]}.json"'},
+        )
+    elif clean_fmt == "html":
+        html_content = ReportService.generate_html_report(scan, db)
+        return Response(
+            content=html_content,
+            media_type="text/html; charset=utf-8",
+            headers={"Content-Disposition": f'inline; filename="vulnscope-report-{scan_id[:8]}.html"'},
+        )
+    elif clean_fmt == "pdf":
+        pdf_bytes = ReportService.generate_pdf_report(scan, db)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="vulnscope-report-{scan_id[:8]}.pdf"'},
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported format '{format}'. Supported formats: 'json', 'html', 'pdf'.",
+        )
+
+
+@router.get("/{scan_id}/report/pdf", summary="Export security report as PDF")
+def get_pdf_report(scan_id: str, db: Session = Depends(get_db)) -> Response:
+    return get_security_report(scan_id=scan_id, format="pdf", db=db)
+
+
+@router.get("/{scan_id}/report/html", summary="Export security report as HTML")
+def get_html_report(scan_id: str, db: Session = Depends(get_db)) -> Response:
+    return get_security_report(scan_id=scan_id, format="html", db=db)
+
+
+@router.get("/{scan_id}/report/json", summary="Export security report as JSON")
+def get_json_report(scan_id: str, db: Session = Depends(get_db)) -> Response:
+    return get_security_report(scan_id=scan_id, format="json", db=db)
+

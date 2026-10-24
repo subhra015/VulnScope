@@ -14,6 +14,7 @@ import {
   RiskSummary,
   ScanComparisonResponse,
   FindingsListResponse,
+  RemediationProposal,
 } from '../types';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/+$/, '');
@@ -199,6 +200,116 @@ export const api = {
     return request<ScanComparisonResponse>(
       `/api/scans/${encodeURIComponent(scanId)}/comparison/${encodeURIComponent(baselineScanId)}`
     );
+  },
+
+  /**
+   * Phase 5: Generate AI explanation and remediation proposal.
+   */
+  async generateAIRemediation(
+    scanId: string,
+    findingId: string,
+    allowRemote = false
+  ): Promise<RemediationProposal> {
+    return request<RemediationProposal>(
+      `/api/scans/${encodeURIComponent(scanId)}/findings/${encodeURIComponent(findingId)}/ai-remediation`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ allow_remote: allowRemote }),
+      }
+    );
+  },
+
+  /**
+   * Phase 5: Get existing AI remediation proposal for a finding.
+   */
+  async getAIRemediation(scanId: string, findingId: string): Promise<RemediationProposal> {
+    return request<RemediationProposal>(
+      `/api/scans/${encodeURIComponent(scanId)}/findings/${encodeURIComponent(findingId)}/ai-remediation`
+    );
+  },
+
+  /**
+   * Phase 5: Generate a proposed fix patch with unified diff.
+   */
+  async generateFixProposal(
+    scanId: string,
+    findingId: string,
+    allowRemote = false
+  ): Promise<RemediationProposal> {
+    return request<RemediationProposal>(
+      `/api/scans/${encodeURIComponent(scanId)}/findings/${encodeURIComponent(findingId)}/fix-proposals`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ allow_remote: allowRemote }),
+      }
+    );
+  },
+
+  /**
+   * Phase 5: List fix proposals for a finding.
+   */
+  async getFixProposals(scanId: string, findingId: string): Promise<RemediationProposal[]> {
+    return request<RemediationProposal[]>(
+      `/api/scans/${encodeURIComponent(scanId)}/findings/${encodeURIComponent(findingId)}/fix-proposals`
+    );
+  },
+
+  /**
+   * Phase 5: Update proposal status ('reviewed', 'rejected', 'verification_pending').
+   */
+  async updateProposalStatus(
+    scanId: string,
+    proposalId: string,
+    status: string,
+    userNotes?: string
+  ): Promise<RemediationProposal> {
+    return request<RemediationProposal>(
+      `/api/scans/${encodeURIComponent(scanId)}/fix-proposals/${encodeURIComponent(proposalId)}/status`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ status, user_notes: userNotes }),
+      }
+    );
+  },
+
+  /**
+   * Phase 5: Download the unified diff patch file.
+   */
+  async downloadPatch(scanId: string, proposalId: string): Promise<void> {
+    const url = `${API_BASE_URL}/api/scans/${encodeURIComponent(scanId)}/fix-proposals/${encodeURIComponent(proposalId)}/download`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new ApiError(`Failed to download patch (HTTP ${response.status})`, response.status);
+    }
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `vulnscope-fix-${proposalId.slice(0, 8)}.patch`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    a.remove();
+  },
+
+  /**
+   * Phase 5: Download security report in JSON, HTML, or PDF format.
+   */
+  async downloadReport(scanId: string, format: 'json' | 'html' | 'pdf'): Promise<void> {
+    const url = `${API_BASE_URL}/api/scans/${encodeURIComponent(scanId)}/report?format=${encodeURIComponent(format)}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new ApiError(`Failed to export report (HTTP ${response.status})`, response.status);
+    }
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `vulnscope-report-${scanId.slice(0, 8)}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    a.remove();
   },
 };
 
