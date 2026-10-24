@@ -170,17 +170,28 @@ def test_api_key_not_leaked_in_openai_provider_repr_or_metadata():
     )
     # Monkeypatch settings
     import app.core.config
-    old_prov = app.core.config.settings.ai_provider
-    old_key = app.core.config.settings.ai_api_key
-    app.core.config.settings.ai_provider = "openai"
-    app.core.config.settings.ai_api_key = "SECRET_API_KEY_12345"
+
+    settings = app.core.config.settings
+
+    old_prov = settings.ai_provider
+    old_key = settings.ai_api_key
+    old_base_url = settings.ai_base_url
+    old_model = settings.ai_model
+
+    settings.ai_provider = "openai"
+    settings.ai_api_key = "SECRET_API_KEY_12345"
+    settings.ai_base_url = "https://api.openai.com/v1"
+    settings.ai_model = "gpt-4o-mini"
 
     try:
         prov = OpenAIProvider()
         meta = prov.get_metadata()
+
         assert "SECRET_API_KEY_12345" not in str(meta)
         assert "api_key" not in meta
         assert "SECRET_API_KEY_12345" not in repr(prov)
     finally:
-        app.core.config.settings.ai_provider = old_prov
-        app.core.config.settings.ai_api_key = old_key
+        settings.ai_provider = old_prov
+        settings.ai_api_key = old_key
+        settings.ai_base_url = old_base_url
+        settings.ai_model = old_model
